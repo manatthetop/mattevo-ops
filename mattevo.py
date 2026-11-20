@@ -287,7 +287,7 @@ class TerminalDesk:
             except FileNotFoundError:
                 print(paint("yellow", "git not found; run setup_repo.sh first"))
         elif cmd == "gitlog":
-            n = args[0] if args and args[0].isdigit() else 5
+            n = int(args[0]) if args and args[0].isdigit() else 5
             try:
                 r = subprocess.run(["git", "log", "--oneline", "-n", n],
                                    capture_output=True, text=True)
