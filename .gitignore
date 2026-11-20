@@ -11,3 +11,6 @@ evidence/*.tar.gz
 evidence/*.bin
 *.sqlite
 .DS_Store
+ledgers/
+targets/
+evidence/*.log
