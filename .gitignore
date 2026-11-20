@@ -14,3 +14,6 @@ evidence/*.bin
 ledgers/
 targets/
 evidence/*.log
+
+# local-only archives
+archive/
