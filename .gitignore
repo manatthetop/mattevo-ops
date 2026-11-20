@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+*.key
+*.pem
+seeds/
+tokens/
+vault/values/
+mitm/captures/
+evidence/*.tar.gz
+evidence/*.bin
+*.sqlite
+.DS_Store
