@@ -289,7 +289,7 @@ class TerminalDesk:
         elif cmd == "gitlog":
             n = int(args[0]) if args and args[0].isdigit() else 5
             try:
-                r = subprocess.run(["git", "log", "--oneline", "-n", n],
+                r = subprocess.run(["git", "log", "--oneline", "-n", str(n)],
                                    capture_output=True, text=True)
                 print(paint("white", r.stdout.strip() or "no commits yet"))
             except FileNotFoundError:
