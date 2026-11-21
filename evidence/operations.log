@@ -1,0 +1,71 @@
+2026-11-20T22:49:06Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-20T22:49:06Z [BLUE] [EYES] target NIGHTBAZAAR (marketzq7f.onion) queued[0m
+2026-11-20T22:49:06Z [BLUE] [EYES] marketzq7f.onion discovered -> NIGHTBAZAAR[0m
+2026-11-20T22:49:06Z [YELLOW] [SCOPE] NIGHTBAZAAR confidence 25% PARKED <50%[0m
+2026-11-20T22:49:06Z [YELLOW] [OPS] NIGHTBAZAAR halted after deanon[0m
+2026-11-20T22:49:06Z [WHITE] [FILE] dossier written targets/NIGHTBAZAAR.dossier.json[0m
+2026-11-20T22:49:06Z [RED] [ANVIL] refused: DESTROY needs explicit confirm (two-step)[0m
+2026-11-20T22:49:37Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-20T22:49:37Z [BLUE] [EYES] target NIGHTBAZAAR (marketzq7f.onion) queued[0m
+2026-11-20T22:49:37Z [BLUE] [EYES] marketzq7f.onion discovered -> NIGHTBAZAAR[0m
+2026-11-20T22:49:37Z [BLUE] [SCOPE] NIGHTBAZAAR confidence 60% PROCEED[0m
+2026-11-20T22:49:37Z [PURPLE] [RELAY] NIGHTBAZAAR: observed 6 req/res pairs inside onion[0m
+2026-11-20T22:49:37Z [PURPLE] [FORGE] NIGHTBAZAAR hybrid attempt #1: entry:ssrf -> priv-esc:jwt_none -> drain:withdraw_redirect[0m
+2026-11-20T22:49:37Z [WHITE] [EVIDENCE] sealed forge-verify-#1 -> sha256:dab5003984b67f17...[0m
+2026-11-20T22:49:37Z [GREEN] [VERIFY] NIGHTBAZAAR: 3/3 links PASS against relay traffic - GUARANTEED[0m
+2026-11-20T22:49:37Z [BLUE] [HAND] NIGHTBAZAAR: creds acquired, escrow view live, site STILL UP[0m
+2026-11-20T22:49:37Z [GREEN] [SIPHON] NIGHTBAZAAR: captured $44,474.18 -> cold, net $43,184.43 to Spot (fee 2.9%)[0m
+2026-11-20T22:49:37Z [GREEN] [OPS] NIGHTBAZAAR harvested; awaiting DESTROY button[0m
+2026-11-20T22:49:37Z [WHITE] [FILE] dossier written targets/NIGHTBAZAAR.dossier.json[0m
+2026-11-20T22:49:37Z [RED] [ANVIL] refused: DESTROY needs explicit confirm (two-step)[0m
+2026-11-21T00:06:47Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T00:06:56Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T00:07:16Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T00:11:22Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T00:11:31Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T01:47:39Z [BLUE] [EYES] marketzq7f.onion discovered -> NIGHTBAZAAR[0m
+2026-11-21T01:47:39Z [YELLOW] [SCOPE] NIGHTBAZAAR confidence 35% PARKED <50%[0m
+2026-11-21T01:47:39Z [YELLOW] [OPS] NIGHTBAZAAR halted after deanon[0m
+2026-11-21T01:47:49Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T01:47:49Z [YELLOW] NO TARGET night; type bench to see the list[0m
+2026-11-21T01:47:49Z [YELLOW] which target? name it, or keep one live target on the bench[0m
+2026-11-21T01:47:57Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T01:47:57Z [BLUE] [EYES] target NIGHTBAZAAR (marketzq7f.onion) queued[0m
+2026-11-21T01:47:57Z [BLUE] [EYES] marketzq7f.onion discovered -> NIGHTBAZAAR[0m
+2026-11-21T01:47:57Z [BLUE] [SCOPE] NIGHTBAZAAR confidence 75% PROCEED[0m
+2026-11-21T01:47:57Z [PURPLE] [RELAY] NIGHTBAZAAR: observed 6 req/res pairs inside onion[0m
+2026-11-21T01:47:57Z [PURPLE] [FORGE] NIGHTBAZAAR hybrid attempt #1: entry:deser -> priv-esc:sqli_auth -> drain:escrow_race[0m
+2026-11-21T01:47:57Z [WHITE] [EVIDENCE] sealed forge-verify-#1 -> sha256:78c4b9bcc34fe340...[0m
+2026-11-21T01:47:57Z [GREEN] [VERIFY] NIGHTBAZAAR: 3/3 links PASS against relay traffic - GUARANTEED[0m
+2026-11-21T01:47:57Z [BLUE] [HAND] NIGHTBAZAAR: creds acquired, escrow view live, site STILL UP[0m
+2026-11-21T01:47:57Z [GREEN] [SIPHON] NIGHTBAZAAR: captured $58,386.52 -> cold, net $56,693.31 to Spot (fee 2.9%)[0m
+2026-11-21T01:47:57Z [GREEN] [OPS] NIGHTBAZAAR harvested; awaiting DESTROY button[0m
+2026-11-21T01:48:22Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T01:48:22Z [BLUE] [EYES] target SHADOWKART (shadowmk2a.onion) queued[0m
+2026-11-21T01:48:22Z [BLUE] [EYES] shadowmk2a.onion discovered -> SHADOWKART[0m
+2026-11-21T01:48:22Z [BLUE] [SCOPE] SHADOWKART confidence 70% PROCEED[0m
+2026-11-21T01:48:22Z [PURPLE] [RELAY] SHADOWKART: observed 6 req/res pairs inside onion[0m
+2026-11-21T01:48:22Z [PURPLE] [FORGE] SHADOWKART hybrid attempt #1: entry:header_inj -> priv-esc:jwt_none -> drain:escrow_race[0m
+2026-11-21T01:48:22Z [WHITE] [EVIDENCE] sealed forge-verify-#1 -> sha256:963154916c590ff9...[0m
+2026-11-21T01:48:22Z [GREEN] [VERIFY] SHADOWKART: 3/3 links PASS against relay traffic - GUARANTEED[0m
+2026-11-21T01:48:22Z [BLUE] [HAND] SHADOWKART: creds acquired, escrow view live, site STILL UP[0m
+2026-11-21T01:48:22Z [GREEN] [SIPHON] SHADOWKART: captured $47,823.55 -> cold, net $46,436.67 to Spot (fee 2.9%)[0m
+2026-11-21T01:48:22Z [GREEN] [OPS] SHADOWKART harvested; awaiting DESTROY button[0m
+2026-11-21T01:48:43Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T01:48:43Z [BLUE] [DESK] ledgers saved, desk closed[0m
+2026-11-21T01:48:44Z [BLUE] [DESK] Terminal Desk online. Type help for commands.[0m
+2026-11-21T01:48:44Z [BLUE] [DESK] ledgers saved, desk closed[0m
+2026-11-21T01:49:03Z [BLUE] [DESK] online. new NAME onion to queue, go NAME to run it all, help for the rest.[0m
+2026-11-21T01:49:03Z [BLUE] [DESK] ledgers saved, desk closed[0m
+2026-11-21T01:52:56Z [BLUE] [DESK] online. new NAME onion to queue, go NAME to run it all, help for the rest.[0m
+2026-11-21T01:52:56Z [BLUE] [EYES] target SHADOWKART (shadowmk2a.onion) queued[0m
+2026-11-21T01:52:56Z [BLUE] [EYES] shadowmk2a.onion discovered -> SHADOWKART[0m
+2026-11-21T01:52:56Z [BLUE] [SCOPE] SHADOWKART confidence 85% PROCEED[0m
+2026-11-21T01:52:56Z [PURPLE] [RELAY] SHADOWKART: observed 6 req/res pairs inside onion[0m
+2026-11-21T01:52:56Z [PURPLE] [FORGE] SHADOWKART hybrid attempt #1: entry:header_inj -> priv-esc:sqli_auth -> drain:escrow_race[0m
+2026-11-21T01:52:56Z [WHITE] [EVIDENCE] sealed forge-verify-#1 -> sha256:a238dcbf7a853e1d...[0m
+2026-11-21T01:52:56Z [GREEN] [VERIFY] SHADOWKART: 3/3 links PASS against relay traffic - GUARANTEED[0m
+2026-11-21T01:52:56Z [BLUE] [HAND] SHADOWKART: creds acquired, escrow view live, site STILL UP[0m
+2026-11-21T01:52:56Z [GREEN] [SIPHON] SHADOWKART: captured $61,748.25 -> cold, net $59,957.55 to Spot (fee 2.9%)[0m
+2026-11-21T01:52:56Z [GREEN] [OPS] SHADOWKART harvested; awaiting DESTROY button[0m
+2026-11-21T01:52:56Z [BLUE] [DESK] ledgers saved, desk closed[0m

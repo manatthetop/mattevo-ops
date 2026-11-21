@@ -1,0 +1,9 @@
+{
+  "drip_min": 1800.0,
+  "drip_max": 4900.0,
+  "noise_min": 6,
+  "noise_max": 14,
+  "cover_min": 1.8,
+  "retag": true,
+  "wipes": 3
+}

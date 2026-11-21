@@ -1,0 +1,95 @@
+{
+  "name": "SHADOWKART",
+  "onion": "shadowmk2a.onion",
+  "state": "exploited",
+  "confidence": 0.85,
+  "signals": {
+    "wallet_reuse": 0.35,
+    "pgp_reuse": 0.25,
+    "timing_fp": 0.15,
+    "guard_corr": 0.1
+  },
+  "observations": [
+    "req0::POST /login",
+    "req1::GET /static/app.js",
+    "req2::GET /profile",
+    "req3::GET /order?id=",
+    "req4::GET /static/app.js",
+    "req5::GET /static/app.js"
+  ],
+  "forge_log": [
+    {
+      "attempt": 1,
+      "chain": [
+        {
+          "link": "entry:header_inj",
+          "mutated_to": "POST",
+          "pass_rate": 0.98
+        },
+        {
+          "link": "priv-esc:sqli_auth",
+          "mutated_to": "GET",
+          "pass_rate": 0.97
+        },
+        {
+          "link": "drain:escrow_race",
+          "mutated_to": "app",
+          "pass_rate": 0.99
+        }
+      ],
+      "at": "2026-11-21T01:52:56Z"
+    }
+  ],
+  "chain": [
+    {
+      "link": "entry:header_inj",
+      "mutated_to": "POST",
+      "pass_rate": 0.98
+    },
+    {
+      "link": "priv-esc:sqli_auth",
+      "mutated_to": "GET",
+      "pass_rate": 0.97
+    },
+    {
+      "link": "drain:escrow_race",
+      "mutated_to": "app",
+      "pass_rate": 0.99
+    }
+  ],
+  "verified": true,
+  "captured_usd": 76324.42,
+  "spot_usd": 71471.83,
+  "evidence_hash": null,
+  "destroyed": false,
+  "cloak": {
+    "noise_rounds": 0,
+    "cover_flow_usd": 0.0,
+    "cover_ratio": 0.0,
+    "drip_min": 0.0,
+    "drip_max": 0.0,
+    "ghost_tx": 0,
+    "wipes": 0
+  },
+  "live": {
+    "captures": 5,
+    "last_ts": "2026-11-21T02:23:27Z",
+    "last_usd": 1359.0,
+    "last_method": "k_reuse_sweep:php_rand_nonce",
+    "rate_per_min": 13014.3,
+    "watched": true
+  },
+  "wallet": {
+    "address": "13GZSddTHQZmZiWAdFWWWgjTmbRM94j175",
+    "pub": "03dcf9703c861f024d842ccf9417afe916644f6b589a8dddc170c3f79584d65279",
+    "k_reused": true,
+    "priv_hex": "10d56c5365daf9866961bfd0551a09706d9a82db5a111b6563f9e666bfe4e63e",
+    "sweeps": 2,
+    "swept_sats": 4181544,
+    "last_txid": "2e86aae9520e5a2cd438cff0e9c726a7ffe4a8846bee750087a9c7770189d897",
+    "weakness": "php_rand_nonce",
+    "sweep_addr": "1DDAh6jwBLG7oPzF1eHy84z5rN7idWcTPz",
+    "stored_in": "cold",
+    "cold_addr": "1DDAh6jwBLG7oPzF1eHy84z5rN7idWcTPz"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "name": "NIGHTBAZAAR",
+  "onion": "marketzq7f.onion",
+  "state": "exploited",
+  "confidence": 0.6,
+  "signals": {
+    "pgp_reuse": 0.25,
+    "cert_reuse": 0.2,
+    "timing_fp": 0.15
+  },
+  "observations": [
+    "req0::GET /static/app.js",
+    "req1::POST /withdraw",
+    "req2::GET /order?id=",
+    "req3::GET /profile",
+    "req4::GET /order?id=",
+    "req5::POST /withdraw"
+  ],
+  "forge_log": [
+    {
+      "attempt": 1,
+      "chain": [
+        {
+          "link": "entry:ssrf",
+          "mutated_to": "static",
+          "pass_rate": 0.98
+        },
+        {
+          "link": "priv-esc:jwt_none",
+          "mutated_to": "GET",
+          "pass_rate": 0.97
+        },
+        {
+          "link": "drain:withdraw_redirect",
+          "mutated_to": "POST",
+          "pass_rate": 0.99
+        }
+      ],
+      "at": "2026-11-20T22:49:37Z"
+    }
+  ],
+  "chain": [
+    {
+      "link": "entry:ssrf",
+      "mutated_to": "static",
+      "pass_rate": 0.98
+    },
+    {
+      "link": "priv-esc:jwt_none",
+      "mutated_to": "GET",
+      "pass_rate": 0.97
+    },
+    {
+      "link": "drain:withdraw_redirect",
+      "mutated_to": "POST",
+      "pass_rate": 0.99
+    }
+  ],
+  "verified": true,
+  "captured_usd": 59018.049999999996,
+  "spot_usd": 52288.63,
+  "evidence_hash": null,
+  "destroyed": false,
+  "cloak": {
+    "noise_rounds": 0,
+    "cover_flow_usd": 0.0,
+    "cover_ratio": 0.0,
+    "drip_min": 0.0,
+    "drip_max": 0.0,
+    "ghost_tx": 0,
+    "wipes": 0
+  },
+  "live": {
+    "captures": 7,
+    "last_ts": "2026-11-21T02:23:27Z",
+    "last_usd": 1291.94,
+    "last_method": "k_reuse_sweep:lucky_draw_rng",
+    "rate_per_min": 10697.64,
+    "watched": true
+  },
+  "wallet": {
+    "address": "14GALkKPBm2BsKBvh5ZK2Luiw9YTmb8cqz",
+    "pub": "0230d0d1a589124cc8f2f307c8f50268b8fd8ec529e1e65a3d43e42e2f96406986",
+    "k_reused": true,
+    "priv_hex": "4214dc6fbeaaba8960dfb724cff8353dcaa00eb5a041beacc5aca01018129dcc",
+    "sweeps": 4,
+    "swept_sats": 7950372,
+    "last_txid": "3dd8f92f721509d99d05d81fac822b19c82970b321f01a7b88e2905f03c88ab2",
+    "weakness": "lucky_draw_rng",
+    "sweep_addr": "1DDAh6jwBLG7oPzF1eHy84z5rN7idWcTPz",
+    "stored_in": "cold",
+    "cold_addr": "1DDAh6jwBLG7oPzF1eHy84z5rN7idWcTPz"
+  }
+}

@@ -1,0 +1,170 @@
+[
+  {
+    "ts": "2026-11-20T22:49:37Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 8009.47,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-20T22:49:37Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 26491.12,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-20T22:49:37Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 9973.59,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:47:57Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 27537.41,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:47:57Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 15211.35,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:47:57Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 15637.76,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:48:22Z",
+    "target": "SHADOWKART",
+    "usd": 15892.88,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:48:22Z",
+    "target": "SHADOWKART",
+    "usd": 6437.55,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:48:22Z",
+    "target": "SHADOWKART",
+    "usd": 25493.12,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:52:56Z",
+    "target": "SHADOWKART",
+    "usd": 17955.46,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:52:56Z",
+    "target": "SHADOWKART",
+    "usd": 28126.33,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:52:56Z",
+    "target": "SHADOWKART",
+    "usd": 15666.46,
+    "method": "withdraw_redirect"
+  },
+  {
+    "ts": "2026-11-21T01:58:17Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 3774.06,
+    "method": "withdraw_redirect",
+    "cloak": "sub-threshold"
+  },
+  {
+    "ts": "2026-11-21T01:58:17Z",
+    "target": "SHADOWKART",
+    "usd": 3576.53,
+    "method": "withdraw_redirect",
+    "cloak": "sub-threshold"
+  },
+  {
+    "ts": "2026-11-21T01:58:33Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 2036.17,
+    "method": "withdraw_redirect",
+    "cloak": "sub-threshold"
+  },
+  {
+    "ts": "2026-11-21T01:58:33Z",
+    "target": "SHADOWKART",
+    "usd": 3943.54,
+    "method": "withdraw_redirect",
+    "cloak": "sub-threshold"
+  },
+  {
+    "ts": "2026-11-21T01:58:33Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 3565.88,
+    "method": "withdraw_redirect",
+    "cloak": "sub-threshold"
+  },
+  {
+    "ts": "2026-11-21T01:58:33Z",
+    "target": "SHADOWKART",
+    "usd": 4338.1,
+    "method": "withdraw_redirect",
+    "cloak": "sub-threshold"
+  },
+  {
+    "ts": "2026-11-21T02:01:32Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 1291.94,
+    "method": "k_reuse_sweep:lucky_draw_rng",
+    "cloak": "sub-threshold",
+    "sats": 1987593,
+    "txid": "43942653d8338200943ab8933336024a9ece2859d6b8bd2fb6a6a64278945fe0"
+  },
+  {
+    "ts": "2026-11-21T02:05:28Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 1291.94,
+    "method": "k_reuse_sweep:lucky_draw_rng",
+    "cloak": "sub-threshold",
+    "sats": 1987593,
+    "txid": "e6958f4c886aa4e42c426bc259f15d71f6d8b35c5bd2d3f519eeb2e95cc4f632"
+  },
+  {
+    "ts": "2026-11-21T02:13:58Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 1291.94,
+    "method": "k_reuse_sweep:lucky_draw_rng",
+    "cloak": "sub-threshold",
+    "sats": 1987593,
+    "txid": "c4b4e934d247377da355b4cff6cf70fe6e8414a11b6d379b81b3f59c96f49fc6"
+  },
+  {
+    "ts": "2026-11-21T02:13:58Z",
+    "target": "SHADOWKART",
+    "usd": 1359.0,
+    "method": "k_reuse_sweep:php_rand_nonce",
+    "cloak": "sub-threshold",
+    "sats": 2090772,
+    "txid": "17ab11873ddf2a791c64de735603aa1b0381d8e3bfa9df239313ec0f743cadfe"
+  },
+  {
+    "ts": "2026-11-21T02:23:27Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 1291.94,
+    "method": "k_reuse_sweep:lucky_draw_rng",
+    "cloak": "sub-threshold",
+    "sats": 1987593,
+    "txid": "3dd8f92f721509d99d05d81fac822b19c82970b321f01a7b88e2905f03c88ab2"
+  },
+  {
+    "ts": "2026-11-21T02:23:27Z",
+    "target": "SHADOWKART",
+    "usd": 1359.0,
+    "method": "k_reuse_sweep:php_rand_nonce",
+    "cloak": "sub-threshold",
+    "sats": 2090772,
+    "txid": "2e86aae9520e5a2cd438cff0e9c726a7ffe4a8846bee750087a9c7770189d897"
+  }
+]
