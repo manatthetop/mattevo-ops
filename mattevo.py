@@ -812,7 +812,7 @@ def cmd_install():
 def main():
     ap = argparse.ArgumentParser(prog="mattevo",
         description="MATTevo grey-hat interception engine. No argument opens the Terminal Desk.")
-    ap.add_argument("mode", nargs="?", default="desk",
+    ap.add_argument("mode", nargs="?", default="live",
                     choices=["desk", "init", "run", "status", "live", "vault", "jack",
                              "demo", "install"])
     ap.add_argument("target", nargs="?", default="")
