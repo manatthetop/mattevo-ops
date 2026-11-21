@@ -1,9 +1,14 @@
+#!/usr/bin/env python3
 """MATTevo v0.3 - Men At The Top, evolved. Core engine + Terminal Desk.
 Grey-hat dark-web interception pipeline: Eyes, Scope, Relay, Forge, Hand, Anvil, File.
 Rules: one target at a time. Money ledger and evidence locker split. Vault-scoped tokens.
 VERIFY gates every forged exploit against observed relay traffic before it may fire.
 Colors: blue=system, purple=forge, white=data, green=money, red=burn/danger, yellow=warn."""
-import argparse, hashlib, json, random, re, subprocess, sys, threading, time
+import argparse, hashlib, json, os, random, re, subprocess, sys, threading, time
+try:
+    import readline  # history (up/down) + tab completion; optional
+except ImportError:
+    readline = None
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -185,6 +190,38 @@ class MATTevo:
         self.exploit(t); self.siphon(t)
         if stop_after == "siphoned":
             self.log(f"[OPS] {t.name} harvested; awaiting DESTROY button", "green")
+    def names(self):
+        return sorted(self.targets)
+    def pick(self, name=None):
+        """Resolve a target by name, or by unique prefix, or the only live one."""
+        if name:
+            t = self.targets.get(name)
+            if t:
+                return t
+            hits = [n for n in self.targets if n.lower().startswith(name.lower())]
+            if len(hits) == 1:
+                return self.targets[hits[0]]
+            if len(hits) > 1:
+                self.log(f"AMBIGUOUS: {', '.join(hits)}", "yellow")
+            else:
+                self.log(f"NO TARGET {name}; type bench to see the list", "yellow")
+            return None
+        live = [t for t in self.targets.values() if t.alive]
+        if len(live) == 1:
+            return live[0]
+        self.log("which target? name it, or keep one live target on the bench", "yellow")
+        return None
+    def summary(self):
+        cap = sum(t.captured_usd for t in self.targets.values())
+        net = self.spot["spot_usd"]
+        lines = [paint("white", "  TARGETS")]
+        for t in self.targets.values():
+            lines.append(paint("white", f"    {t.name:<22} {t.state:<11} ${t.captured_usd:,.2f}"))
+        if not self.targets:
+            lines.append(paint("yellow", "    (empty)"))
+        lines.append(paint("green", f"  MONEY      captured ${cap:,.2f}  spot ${net:,.2f}  cold ${self.spot['cold_usd']:,.2f}"))
+        lines.append(paint("white", f"  FILES      {ROOT}"))
+        return "\n".join(lines)
     def bench(self):
         rows = [f"{t.name} ({t.state}, conf {t.confidence:.0%})" for t in self.targets.values()]
         return paint("white", "BENCH: " + (" | ".join(rows) if rows else "(empty) - add targets with: bench add NAME onion"))
@@ -201,7 +238,10 @@ BANNER = [
 
 class TerminalDesk:
     PROMPT = "MATTevo> "
-    HELP = [("bench", "list targets (bench add NAME onion to enqueue)"),
+    HELP = [("new NAME onion", "queue a target, then: go NAME"),
+            ("go [NAME]", "run the whole chain for you, one target at a time"),
+            ("bench", "list targets (bench add NAME onion to enqueue)"),
+            ("status", "one screen: targets, money, files"),
             ("run NAME [stage]", "walk chain: discover,deanon,mitm,forge,verify,siphoned"),
             ("forge NAME", "hybrid exploit synthesis (purple)"),
             ("verify NAME", "dry-run forged links vs relay (all links or re-forge)"),
@@ -213,6 +253,7 @@ class TerminalDesk:
             ("log [n]", "tail evidence/operations.log"),
             ("commit MSG", "git commit as [ops] MSG"),
             ("gitlog [n]", "recent commits (white)"),
+            ("reset NAME", "put a target back to queued"),
             ("quit", "save ledgers and exit")]
     def __init__(self, engine):
         self.engine = engine
@@ -220,8 +261,11 @@ class TerminalDesk:
         self.thread = threading.Thread(target=self._ticker, daemon=True)
     def start(self):
         self.banner()
+        self._setup_readline()
+        if readline is not None:
+            readline.set_completer(self._complete)
         self.thread.start()
-        self.engine.log("[DESK] Terminal Desk online. Type help for commands.", "blue")
+        self.engine.log("[DESK] online. new NAME onion to queue, go NAME to run it all, help for the rest.", "blue")
         try:
             while True:
                 try:
@@ -233,7 +277,7 @@ class TerminalDesk:
                 cmd, _, rest = raw.partition(" ")
                 args = rest.split()
                 self.dispatch(cmd, args)
-                if cmd == "quit":
+                if cmd in ("quit", "exit", "q"):
                     self.stop.set(); self.engine._save(); break
         finally:
             self.stop.set()
@@ -246,25 +290,45 @@ class TerminalDesk:
                 e.log(f"[EYES] target {args[1]} ({args[2]}) queued", "blue")
             else:
                 print(e.bench())
-        elif cmd == "add" and len(args) >= 2:
+        elif cmd in ("add", "new") and len(args) >= 2:
             e.add_target(args[0], args[1])
-            e.log(f"[EYES] target {args[0]} queued", "blue")
-        elif cmd == "run" and args:
-            t = e.targets.get(args[0])
+            e.log(f"[EYES] target {args[0]} ({args[1]}) queued", "blue")
+        elif cmd == "go":
+            if len(args) >= 2:
+                e.add_target(args[0], args[1])
+                e.log(f"[EYES] target {args[0]} ({args[1]}) queued", "blue")
+            t = e.pick(args[0] if args else None)
+            if t:
+                e.run_chain(t, stop_after="siphoned")
+                print(e.summary())
+        elif cmd == "status":
+            print(e.summary())
+        elif cmd == "clear":
+            print("\033[H\033[2J", end="")
+        elif cmd in ("quit", "exit", "q"):
+            self.engine.log("[DESK] ledgers saved, desk closed", "blue")
+        elif cmd == "reset" and args:
+            t = e.pick(args[0])
+            if t:
+                t.state, t.confidence, t.verified = "queued", 0.0, False
+                t.chain, t.forge_log, t.observations = [], [], []
+                e.log(f"[DESK] {t.name} reset to queued", "yellow")
+        elif cmd == "run":
+            t = e.pick(args[0] if args else None)
             if t:
                 e.run_chain(t, stop_after=args[1] if len(args) > 1 else "siphoned")
-        elif cmd == "forge" and args:
-            t = e.targets.get(args[0])
+        elif cmd == "forge":
+            t = e.pick(args[0] if args else None)
             if t: e.forge(t)
-        elif cmd == "verify" and args:
-            t = e.targets.get(args[0])
+        elif cmd == "verify":
+            t = e.pick(args[0] if args else None)
             if t: e.verify(t)
-        elif cmd == "siphon" and args:
-            t = e.targets.get(args[0])
+        elif cmd == "siphon":
+            t = e.pick(args[0] if args else None)
             if t: e.siphon(t, float(args[1]) if len(args) > 1 else None)
-        elif cmd == "destroy" and args:
-            t = e.targets.get(args[0])
-            if t: e.destroy(t, confirm=len(args) > 1 and args[1] == "yes")
+        elif cmd == "destroy":
+            t = e.pick(args[0] if args else None)
+            if t: e.destroy(t, confirm="yes" in args[1:])
         elif cmd == "spot":
             s = e.spot
             print(paint("green", f"  COLD  ${s['cold_usd']:,.2f}    SPOT  ${s['spot_usd']:,.2f}    fee {s['fee_pct']}%"))
@@ -300,6 +364,36 @@ class TerminalDesk:
                 print(paint("white", f"  {name:<22} {desc}"))
         else:
             print(paint("yellow", "  unknown command; type help"))
+    def _setup_readline(self):
+        """Up/down history in ~/.mattevo_history, tab completion for commands and names."""
+        if readline is None:
+            return
+        try:
+            hist = Path.home()/".mattevo_history"
+            readline.set_history_length(500)
+            try:
+                readline.read_history_file(hist)
+            except FileNotFoundError:
+                pass
+            import atexit
+            atexit.register(readline.write_history_file, hist)
+            readline.set_completer_delims(" ")
+            readline.parse_and_bind("tab: complete")
+        except Exception:
+            pass
+    def _complete(self, text, state):
+        words = [c for c, _ in self.HELP] + ["help", "clear"] + self.engine.names()
+        buf = readline.get_line_buffer().lstrip()
+        if not buf or " " not in buf:
+            opts = [w + " " for w in words if w.startswith(text)]
+        else:
+            head = buf.split()[0]
+            if head in ("bench",) and len(buf.split()) == 1:
+                opts = ["add "]
+            else:
+                opts = [n + " " for n in self.engine.names() if n.startswith(text)]
+        opts = sorted(set(opts))
+        return opts[state] if state < len(opts) else None
     def banner(self):
         for line in BANNER:
             print(line)
@@ -319,19 +413,100 @@ class TerminalDesk:
             sys.stdout.flush()
         sys.stdout.write("\r" + " " * 78 + "\r")
 
-if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("mode", nargs="?", default="demo", choices=["demo", "desk"])
-    args = ap.parse_args()
+def _folders():
+    for d in ("forge/library", "targets", "evidence", "vault", "ledgers", "desk", "prompts"):
+        (ROOT/d).mkdir(parents=True, exist_ok=True)
+
+def cmd_run(name, onion="", stage="siphoned"):
     e = MATTevo()
-    if args.mode == "desk":
-        TerminalDesk(e).start()
-    else:
-        if not e.targets:
-            e.add_target("NIGHTBAZAAR", "marketzq7f.onion")
-            e.add_target("SHADOWKART", "shadowmk2a.onion")
-        for t in list(e.targets.values()):
-            if t.alive:
-                e.run_chain(t)
-        e._save()
-        print(e.bench())
+    if name not in e.targets:
+        if not onion:
+            print(paint("yellow", f"NO TARGET {name}; add an onion address too"))
+            return 1
+        e.add_target(name, onion)
+    e.run_chain(e.targets[name], stop_after=stage)
+    print(e.summary())
+    e._save()
+    return 0
+
+def cmd_demo():
+    e = MATTevo()
+    if not e.targets:
+        e.add_target("NIGHTBAZAAR", "marketzq7f.onion")
+        e.add_target("SHADOWKART", "shadowmk2a.onion")
+    for t in list(e.targets.values()):
+        if t.alive:
+            e.run_chain(t)
+    e._save()
+    print(e.bench())
+    return 0
+
+def cmd_install():
+    """Put a 'mattevo' command on your PATH so you can start the desk from anywhere."""
+    src = Path(__file__).resolve()
+    target = None
+    for cand in ("~/.local/bin", "~/.bin", "/usr/local/bin"):
+        d = Path(cand).expanduser()
+        if d.is_dir() and os.access(d, os.W_OK):
+            target = d
+            break
+    if target is None:
+        target = Path.home()/".local/bin"
+        target.mkdir(parents=True, exist_ok=True)
+    link = target/"mattevo"
+    try:
+        if link.exists() or link.is_symlink():
+            link.unlink()
+        link.symlink_to(src)
+        how = f"symlink {link} -> {src}"
+    except OSError:
+        shim = target/"mattevo"
+        shim.write_text(f"#!/bin/sh\nexec {sys.executable} {src} \"$@\"\n")
+        shim.chmod(0o755)
+        how = f"shim {shim}"
+    path = os.environ.get("PATH", "")
+    on_path = any(str(target) == p for p in path.split(":"))
+    if not on_path:
+        rc = Path.home()/".bashrc"
+        line = f'export PATH="{target}:$PATH"'
+        try:
+            had = rc.exists() and line in rc.read_text()
+            if not had:
+                with rc.open("a") as fh:
+                    fh.write("\n# MATTevo command\n" + line + "\n")
+        except OSError:
+            pass
+        print(paint("yellow", f"  PATH: run  export PATH=\"{target}:$PATH\"  now, or open a new shell"))
+    print(paint("green", f"  installed {how}"))
+    print(paint("white", "  type: mattevo"))
+    return 0
+
+def main():
+    ap = argparse.ArgumentParser(prog="mattevo",
+        description="MATTevo grey-hat interception engine. No argument opens the Terminal Desk.")
+    ap.add_argument("mode", nargs="?", default="desk",
+                    choices=["desk", "run", "status", "demo", "install"])
+    ap.add_argument("target", nargs="?", default="")
+    ap.add_argument("onion", nargs="?", default="")
+    ap.add_argument("--stage", default="siphoned")
+    a = ap.parse_args()
+    _folders()
+    if a.mode == "desk":
+        TerminalDesk(MATTevo()).start()
+        return 0
+    if a.mode == "run":
+        if not a.target:
+            print(paint("yellow", "usage: mattevo run NAME [onion] [--stage siphoned]"))
+            return 1
+        return cmd_run(a.target, a.onion, a.stage)
+    if a.mode == "status":
+        print(MATTevo().summary())
+        return 0
+    if a.mode == "demo":
+        return cmd_demo()
+    if a.mode == "install":
+        return cmd_install()
+    return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
