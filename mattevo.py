@@ -9,6 +9,10 @@ try:
     import readline  # history (up/down) + tab completion; optional
 except ImportError:
     readline = None
+try:
+    import msvcrt  # Windows console: used to detect a bare Enter at the prompt
+except ImportError:
+    msvcrt = None
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -466,10 +470,11 @@ class TerminalDesk:
             readline.set_completer(self._complete)
         self.thread.start()
         self.engine.log("[DESK] online. new NAME onion to queue, go NAME to run it all, help for the rest.", "blue")
+        self._prompt()
         try:
             while True:
                 try:
-                    raw = input(C["bold"] + C["white"] + self.PROMPT + C["reset"]).strip()
+                    raw = input().strip()
                 except EOFError:
                     break
                 if not raw:
@@ -477,6 +482,8 @@ class TerminalDesk:
                 cmd, _, rest = raw.partition(" ")
                 args = rest.split()
                 self.dispatch(cmd, args)
+                if cmd not in ("quit", "exit", "q"):
+                    self._prompt()
                 if cmd in ("quit", "exit", "q"):
                     self.stop.set(); self.engine._save(); break
         finally:
@@ -581,6 +588,24 @@ class TerminalDesk:
             readline.parse_and_bind("tab: complete")
         except Exception:
             pass
+    def _prompt(self):
+        """Draw the prompt and flush it. Windows consoles buffer a partial line
+        until a newline, so an unprompted input() looks like a hang."""
+        sys.stdout.write(C["bold"] + C["white"] + self.PROMPT + C["reset"])
+        sys.stdout.flush()
+    @staticmethod
+    def _restore_cursor():
+        """Put the caret back on the prompt line after the LIVE ticker wrote over it."""
+        sys.stdout.write("\r" + C["bold"] + C["white"] + TerminalDesk.PROMPT + C["reset"])
+        sys.stdout.flush()
+    @staticmethod
+    def _key_pending():
+        if msvcrt is None:
+            return False
+        try:
+            return msvcrt.kbhit()
+        except Exception:
+            return False
     def _complete(self, text, state):
         words = [c for c, _ in self.HELP] + ["help", "clear"] + self.engine.names()
         buf = readline.get_line_buffer().lstrip()
@@ -611,6 +636,8 @@ class TerminalDesk:
             line = "\r  LIVE  " + paint("green", f"${e.spot['spot_usd']:,.2f} ") + " ".join(parts)
             sys.stdout.write(line + "   ")
             sys.stdout.flush()
+            if not self._key_pending():
+                self._restore_cursor()
         sys.stdout.write("\r" + " " * 78 + "\r")
 
 def _folders():
