@@ -66,6 +66,16 @@ class MATTevo:
         self._load()
         import atexit; atexit.register(self._save)
     def _load(self):
+        for fp in sorted((ROOT/"targets").glob("*.dossier.json")) if (ROOT/"targets").is_dir() else []:
+            try:
+                d = json.loads(fp.read_text())
+                t = Target(d["name"], d.get("onion", "?"))
+                for k, v in d.items():
+                    if hasattr(t, k) and k not in ("name", "onion"):
+                        setattr(t, k, v)
+                self.targets[t.name] = t
+            except Exception:
+                continue
         for path, holder in ((LEDGER_PATH, self.ledger), (SPOT_PATH, self.spot)):
             if path.exists():
                 try:
@@ -80,6 +90,10 @@ class MATTevo:
         LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
         LEDGER_PATH.write_text(json.dumps(self.ledger, indent=2))
         SPOT_PATH.write_text(json.dumps(self.spot, indent=2))
+        for t in self.targets.values():
+            fp = ROOT/"targets"/f"{t.name}.dossier.json"
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            fp.write_text(json.dumps(t.to_dict(), indent=2))
     def log(self, msg, kind="blue"):
         line = f"{now()} [{kind.upper()}] {msg}"
         print(paint(kind, line), flush=True)
@@ -167,7 +181,7 @@ class MATTevo:
     def destroy(self, t, confirm=False):
         if not confirm:
             self.log(f"[ANVIL] refused: DESTROY needs explicit confirm (two-step)", "red"); return
-        if not t.can("siphoned", "exploited"):
+        if not t.can("siphoned", "exploited", "filed"):
             self.log(f"[ANVIL] {t.name} is '{t.state}', not harvest-complete", "yellow"); return
         t.evidence_hash = self.seal(t, "pre-burn-snapshot")
         t.destroyed, t.state = True, "destroyed"
@@ -176,9 +190,13 @@ class MATTevo:
         fp = ROOT/"targets"/f"{t.name}.dossier.json"
         fp.parent.mkdir(parents=True, exist_ok=True)
         fp.write_text(json.dumps(t.to_dict(), indent=2))
-        t.state = "filed"
+        if t.state in ("queued", "discovered", "deanon", "parked", "observed", "forged", "verified"):
+            t.state = "filed"
         self.log(f"[FILE] dossier written targets/{t.name}.dossier.json", "white")
     def run_chain(self, t, stop_after="siphoned"):
+        if t.state in ("siphoned", "filed", "destroyed"):
+            self.log(f"[OPS] {t.name} is '{t.state}', nothing left to run. reset NAME to run again", "yellow")
+            return
         steps = [("discover", self.discover, None), ("deanon", self.deanon, lambda x: x.state!="parked"),
                  ("mitm", self.mitm_observe, None), ("forge", self.forge, None),
                  ("verify", self.verify, lambda x: x.verified)]
@@ -193,7 +211,7 @@ class MATTevo:
     def names(self):
         return sorted(self.targets)
     def pick(self, name=None):
-        """Resolve a target by name, or by unique prefix, or the only live one."""
+        """Resolve a target by name, by unique prefix, or the only live one."""
         if name:
             t = self.targets.get(name)
             if t:
@@ -417,16 +435,63 @@ def _folders():
     for d in ("forge/library", "targets", "evidence", "vault", "ledgers", "desk", "prompts"):
         (ROOT/d).mkdir(parents=True, exist_ok=True)
 
-def cmd_run(name, onion="", stage="siphoned"):
+STAGES = ["discover", "deanon", "mitm", "forge", "verify", "siphoned", "destroyed"]
+
+def _stage(want):
+    hits = [x for x in STAGES if x.startswith(want.lower())]
+    if len(hits) == 1:
+        return hits[0]
+    return "siphoned"
+
+def cmd_run(name, onion="", stage="siphoned", do_dossier=False, do_destroy=False):
     e = MATTevo()
-    if name not in e.targets:
+    t = e.targets.get(name) or e.pick(name)
+    if t is None:
         if not onion:
-            print(paint("yellow", f"NO TARGET {name}; add an onion address too"))
+            print(paint("yellow", f"NO TARGET {name}; usage: mattevo run NAME onion"))
             return 1
-        e.add_target(name, onion)
-    e.run_chain(e.targets[name], stop_after=stage)
+        t = e.add_target(name.upper(), onion)
+    e.run_chain(t, stop_after=_stage(stage))
+    if do_destroy:
+        e.destroy(t, confirm=True)
+    if do_dossier:
+        e.dossier(t)
     print(e.summary())
     e._save()
+    return 0
+
+def cmd_status(as_json=False):
+    e = MATTevo()
+    if as_json:
+        print(json.dumps({"targets": {n: t.to_dict() for n, t in e.targets.items()},
+                          "money": e.spot, "files": str(ROOT)}, indent=2))
+    else:
+        print(e.summary())
+    return 0
+
+def cmd_init(name="", onion="", force=False):
+    """Create the folder tree, seed the ledgers, and optionally queue one target."""
+    _folders()
+    fresh = not SPOT_PATH.exists()
+    e = MATTevo()
+    if force:
+        e.spot = {"cold_usd": 0.0, "spot_usd": 0.0, "fee_pct": 2.9}
+        e.ledger[:] = []
+        for fp in (ROOT/"targets").glob("*.dossier.json"):
+            fp.unlink()
+        e.targets.clear()
+        print(paint("red", "  wiped ledgers and dossiers"))
+    if name:
+        if not onion:
+            print(paint("yellow", "usage: mattevo init NAME onion"))
+            return 1
+        e.add_target(name.upper(), onion)
+        print(paint("blue", f"  queued {name.upper()} -> {onion}"))
+    e._save()
+    print(paint("green", f"  {'initialised' if fresh else 'ready'} {ROOT}"))
+    print(paint("white", "  folders: forge/library targets evidence vault ledgers desk prompts"))
+    print(paint("white", f"  targets on file: {', '.join(e.names()) if e.names() else 'none'}"))
+    print(paint("white", "  next: mattevo run NAME onion"))
     return 0
 
 def cmd_demo():
@@ -485,23 +550,28 @@ def main():
     ap = argparse.ArgumentParser(prog="mattevo",
         description="MATTevo grey-hat interception engine. No argument opens the Terminal Desk.")
     ap.add_argument("mode", nargs="?", default="desk",
-                    choices=["desk", "run", "status", "demo", "install"])
+                    choices=["desk", "init", "run", "status", "demo", "install"])
     ap.add_argument("target", nargs="?", default="")
     ap.add_argument("onion", nargs="?", default="")
     ap.add_argument("--stage", default="siphoned")
+    ap.add_argument("--dossier", action="store_true", help="write the bounty dossier after the run")
+    ap.add_argument("--destroy", action="store_true", help="burn the target after the run")
+    ap.add_argument("--json", action="store_true", help="status as machine-readable JSON")
+    ap.add_argument("--force", action="store_true", help="init: wipe the money ledgers first")
     a = ap.parse_args()
     _folders()
     if a.mode == "desk":
         TerminalDesk(MATTevo()).start()
         return 0
+    if a.mode == "init":
+        return cmd_init(a.target, a.onion, a.force)
     if a.mode == "run":
         if not a.target:
-            print(paint("yellow", "usage: mattevo run NAME [onion] [--stage siphoned]"))
+            print(paint("yellow", "usage: mattevo run NAME [onion] [--stage verify] [--dossier] [--destroy]"))
             return 1
-        return cmd_run(a.target, a.onion, a.stage)
+        return cmd_run(a.target, a.onion, a.stage, a.dossier, a.destroy)
     if a.mode == "status":
-        print(MATTevo().summary())
-        return 0
+        return cmd_status(a.json)
     if a.mode == "demo":
         return cmd_demo()
     if a.mode == "install":
