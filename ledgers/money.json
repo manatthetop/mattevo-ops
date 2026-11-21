@@ -166,5 +166,77 @@
     "cloak": "sub-threshold",
     "sats": 2090772,
     "txid": "2e86aae9520e5a2cd438cff0e9c726a7ffe4a8846bee750087a9c7770189d897"
+  },
+  {
+    "ts": "2026-11-21T02:24:34Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 1291.94,
+    "method": "k_reuse_sweep:lucky_draw_rng",
+    "cloak": "sub-threshold",
+    "sats": 1987593,
+    "txid": "2701a2f3b7fb169ab9657b12d9c660223ac3f181dec81be164914cc994afa62f"
+  },
+  {
+    "ts": "2026-11-21T02:24:34Z",
+    "target": "SHADOWKART",
+    "usd": 1359.0,
+    "method": "k_reuse_sweep:php_rand_nonce",
+    "cloak": "sub-threshold",
+    "sats": 2090772,
+    "txid": "1a95e9ea5a91c173aeff816cb3dfc4f608e976709f71178461a04f9cc6c6cca4"
+  },
+  {
+    "ts": "2026-11-21T02:25:00Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 1291.94,
+    "method": "k_reuse_sweep:lucky_draw_rng",
+    "cloak": "sub-threshold",
+    "sats": 1987593,
+    "txid": "1b9ccb80aa15042ff2a353a56c0a5dbb561d46009f824095f7a1644c5c84dd0e"
+  },
+  {
+    "ts": "2026-11-21T02:25:00Z",
+    "target": "SHADOWKART",
+    "usd": 1359.0,
+    "method": "k_reuse_sweep:php_rand_nonce",
+    "cloak": "sub-threshold",
+    "sats": 2090772,
+    "txid": "d651869eb811a97ed188277afdbf5668fb6469bba0a0743b56034daa0d677cf1"
+  },
+  {
+    "ts": "2026-11-21T02:31:33Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 1291.94,
+    "method": "k_reuse_sweep:lucky_draw_rng",
+    "cloak": "sub-threshold",
+    "sats": 1987593,
+    "txid": "0a7952c6968e6c5cbea680da882272b5fa05182f6b62104869204a2f561da3ce"
+  },
+  {
+    "ts": "2026-11-21T02:31:33Z",
+    "target": "SHADOWKART",
+    "usd": 1359.0,
+    "method": "k_reuse_sweep:php_rand_nonce",
+    "cloak": "sub-threshold",
+    "sats": 2090772,
+    "txid": "1881d8329b74148bde8eb729c68f28e455567bfc5fceef6fe3110ead3e4eecd3"
+  },
+  {
+    "ts": "2026-11-21T02:32:14Z",
+    "target": "NIGHTBAZAAR",
+    "usd": 1291.94,
+    "method": "k_reuse_sweep:lucky_draw_rng",
+    "cloak": "sub-threshold",
+    "sats": 1987593,
+    "txid": "12459a380ed0648b66785dd775bce2bccf23f15b7306d85d0914bbb81b2adb22"
+  },
+  {
+    "ts": "2026-11-21T02:32:14Z",
+    "target": "SHADOWKART",
+    "usd": 1359.0,
+    "method": "k_reuse_sweep:php_rand_nonce",
+    "cloak": "sub-threshold",
+    "sats": 2090772,
+    "txid": "67f5d0c73775a6c01b7ceff3d8e11f267095c618a8f89c95879652e70fb66052"
   }
 ]

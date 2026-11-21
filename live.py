@@ -108,6 +108,16 @@ def mempool_signatures(sample=60):
     return sigs, len(picked), len(txids)
 
 
+def spot_price_usd():
+    """Live BTC spot in USD. Drives every $ figure the board prints so the money
+    numbers track the market instead of a hardcoded constant."""
+    d = _get("/api/v1/prices", base="https://mempool.space") or {}
+    try:
+        return float(d.get("USD"))
+    except (TypeError, ValueError):
+        return None
+
+
 def chain_state():
     """Live chain facts: height, fee floor, and the recommended rates."""
     tip = _get("/blocks/tip/height")
@@ -119,17 +129,18 @@ def frame(mode="real", target=None, sample=60):
     """One snapshot of the real world for the board to render."""
     st = {"mode": mode, "feed": "none", "height": None, "fees": {}, "txs_seen": 0,
           "mempool_size": 0, "sigs_seen": 0, "reuse_buckets": 0, "worst_bucket": 0,
-          "sats_at_risk": 0, "sample": []}
+          "sats_at_risk": 0, "spot_usd": None, "sample": []}
     if mode == "sim":
         st.update(feed="sim", height=976825,
                   fees={"fastestFee": 24, "halfHourFee": 12, "hourFee": 6},
-                  txs_seen=40, mempool_size=54375, sigs_seen=1180,
+                  txs_seen=40, mempool_size=54375, sigs_seen=1180, spot_usd=65000.0,
                   reuse_buckets=1, worst_bucket=2, sats_at_risk=1989593)
         return st
     cs = chain_state()
     sigs, n_tx, mem_sz = mempool_signatures(sample)
     st.update(feed=cs["source"], height=cs["height"], fees=cs["fees"],
-              txs_seen=n_tx, mempool_size=mem_sz, sigs_seen=len(sigs))
+              txs_seen=n_tx, mempool_size=mem_sz, sigs_seen=len(sigs),
+              spot_usd=spot_price_usd())
     if cs["height"] is None:
         st["feed"] = "down"
         return st
@@ -174,10 +185,15 @@ def render(st, engine_board=None):
                  f.get("hourFee", "-"))))
     print(paint("cyan", " mempool       %s of %s txs sampled, %s real signatures decoded" %
                 (st["txs_seen"], f"{st['mempool_size']:,}", st["sigs_seen"])))
+    spot = st.get("spot_usd")
+    print(paint("white", " btc spot      %s" %
+                (("$" + f"{spot:,.0f}") if spot else "unpriced")))
     key = "green" if st["reuse_buckets"] == 0 else "yellow"
+    risk = st["sats_at_risk"]
+    usd = ("  $" + f"{risk / 1e8 * spot:,.2f}") if (spot and risk) else ""
     print(paint(key, " k-reuse scan  %s duplicate-r buckets, worst %s sigs, "
-                     "%s sats exposed" %
-                (st["reuse_buckets"], st["worst_bucket"], f"{st['sats_at_risk']:,}")))
+                     "%s sats exposed%s" %
+                (st["reuse_buckets"], st["worst_bucket"], f"{risk:,}", usd)))
     if engine_board:
         for row in engine_board:
             print(paint("white", "   %-12s captures %-3s captured $%-10s spot $%s" %

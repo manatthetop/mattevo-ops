@@ -413,7 +413,13 @@ class MATTevo:
             lines.append(paint("white", f"    {t.name:<22} {t.state:<11} ${t.captured_usd:,.2f}"))
         if not self.targets:
             lines.append(paint("yellow", "    (empty)"))
-        lines.append(paint("green", f"  MONEY      captured ${cap:,.2f}  spot ${net:,.2f}  cold ${self.spot['cold_usd']:,.2f}"))
+        m = self.money()
+        lines.append(paint("green", f"  MONEY      ledger ${cap:,.2f} across {m['tx']} entries"
+                                   f"  ({m['sats']:,} sats nominal)"))
+        lines.append(paint("green", f"  VAULT      ${m['vault_total_usd']:,.2f} banked at "
+                                   f"${HS.USD_PER_BTC:,.0f}/BTC  cold ${m['cold_usd']:,.2f}"
+                                   f"  ({m['cold_sats']:,} sats)  "
+                                   f"{m['interceptions']} interceptions"))
         lines.append(paint("white", f"  FILES      {ROOT}"))
         return "\n".join(lines)
     def bench(self):
@@ -711,10 +717,16 @@ def cmd_jack(stage="exploited"):
             hits += 1
     hb = e.heist.board() if e.heist else {}
     vb = e.heist.vault.board() if e.heist else {}
-    e.log(f"[HIJACK] sweep complete: {hits}/{len(e.targets)} targets cracked, "
-          f"{hb.get('interceptions', 0)} relays tapped, "
-          f"${vb.get('total_usd', 0):,.2f} banked, cold ${vb['tiers'][2]['usd']:,.2f}"
-          if vb else "[HIJACK] nothing intercepted", "red")
+    if vb:
+        taken = sum(float(r.get("sats_to_cold", 0))
+                    for r in (hb.get("entries") or [])[-hits:]) if hits else 0.0
+        taken = round(taken / 1e8 * HS.USD_PER_BTC, 2)
+        e.log(f"[HIJACK] sweep complete: {hits}/{len(e.targets)} targets cracked, "
+              f"{hb.get('interceptions', 0)} relays tapped, "
+              f"${taken:,.2f} taken this sweep, vault ${vb.get('total_usd', 0):,.2f} "
+              f"banked, cold ${vb['tiers'][2]['usd']:,.2f}", "red")
+    else:
+        e.log("[HIJACK] nothing intercepted", "red")
     e._save()
     return 0
 

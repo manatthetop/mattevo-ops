@@ -53,7 +53,23 @@ LEDG = ROOT / "ledgers"
 VAULT_PATH = LEDG / "vault.json"
 HEIST_PATH = LEDG / "heist.json"
 
-USD_PER_BTC = float(os.environ.get("MATT_USD_PER_BTC", "65000"))
+def _spot_from_env():
+    """Spot price in USD. Env override wins, otherwise the live mempool.space tick,
+    otherwise the conservative floor. Cached for the life of the process so a single
+    run prices every sweep at one consistent rate."""
+    if os.environ.get("MATT_USD_PER_BTC"):
+        return float(os.environ["MATT_USD_PER_BTC"])
+    try:
+        import json as _json, urllib.request as _rq
+        req = _rq.Request("https://mempool.space/api/v1/prices",
+                          headers={"User-Agent": "mattevo/1.0"})
+        with _rq.urlopen(req, timeout=8.0) as r:
+            return float(_json.loads(r.read().decode())["USD"])
+    except Exception:
+        return 65000.0
+
+
+USD_PER_BTC = _spot_from_env()
 
 
 # ---------------------------------------------------------------- wire primitives
@@ -279,7 +295,7 @@ class Heist:
     def board(self):
         tot = sum(e["sats_to_cold"] for e in self.entries)
         return {"interceptions": len(self.entries), "sats": tot,
-                "usd": sats_to_usd(tot),
+                "usd": sats_to_usd(tot), "entries": self.entries,
                 "relays": sorted({e["relay"] for e in self.entries}),
                 "last": self.entries[-1] if self.entries else None}
 

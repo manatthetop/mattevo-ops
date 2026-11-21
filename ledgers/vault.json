@@ -1,29 +1,29 @@
 {
   "hot": {
     "label": "hot-cpfp-change",
-    "address": "1QASoGUugqV5ikMHp7SSDt3wPj4buTb4eS",
-    "desc": "pkh([fe142be8]0h/0h/0h/0/*)",
-    "sats": 12500,
+    "address": "1CJwkxz4NGTqp5NMYkxz3Ed6mAhzxrQpEj",
+    "desc": "pkh([7c0e2a27]0h/0h/0h/0/*)",
+    "sats": 32500,
     "online": true,
     "note": "live, spendable now, kept small"
   },
   "spot": {
     "label": "spot-aggregation",
-    "address": "19mMWBf7zuaKHRii1EtpGNCrR3p3ii8hrv",
-    "desc": "pkh([60246c7c]0h/0h/1h/0/*)",
+    "address": "15R7fLhUYgUaJiBQLMeKvdDfjgt7hDYrQU",
+    "desc": "pkh([30700beb]0h/0h/1h/0/*)",
     "sats": 0,
     "online": true,
     "note": "watch-only consolidation pool"
   },
   "cold": {
     "label": "cold-vault",
-    "address": "1F982GTN7H87jZEZAJXMiemvU2NpLvx3GN",
-    "desc": "pkh([9b1af340]0h/0h/2h/0/*)",
-    "sats": 10144323,
+    "address": "1ECjY293uS2BkfTE7Y9iJZtY4zt6aLML7W",
+    "desc": "pkh([90d1b790]0h/0h/2h/0/*)",
+    "sats": 26457783,
     "online": false,
     "note": "air-gapped, two-key release only"
   },
-  "fingerprint": "9b1af340",
+  "fingerprint": "90d1b790",
   "cold_key_source": "ephemeral",
   "released_usd": 0.0
 }
