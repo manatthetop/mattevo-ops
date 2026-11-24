@@ -248,6 +248,11 @@ def scan(sample, cap=4000):
     for r, grp in dupes.items():
         handle_collision(r, grp, tg, circuit)
 
+    addrs = [t.get("escrow_address") for t in cfg.get("targets", [])
+             if t.get("escrow_address")]
+    if addrs:
+        address_watch(addrs, tg, circuit)
+
 
 def handle_collision(r, grp, tg, circuit):
     a, b = grp[0], grp[1]
@@ -299,6 +304,49 @@ def vault_sweep(sig, priv, tg, circuit):
     logline({"event": "capture" if hits else "unsigned, held back",
              "circuit": circuit, "parent_txid": ent["parent_txid"],
              "confirmed": bool(hits)})
+
+
+# ------------------------------------------------------------- address watch
+def address_watch(addrs, tg, circuit, max_pages=3):
+    """Poll /address/{addr}/txs over Tor for the known legacy targets. The
+    general mempool has ~0 p2pkh inputs left (measured 0/200), so the hunt that
+    matters is: does a dossier escrow address MOVE. First tx touching it, gate
+    it, and if its sigs collide with anything we've banked, run recovery."""
+    seen_path = ROOT / "evidence" / "watched_seen.json"
+    seen = set(json.loads(seen_path.read_text())) if seen_path.exists() else set()
+    fresh_total = 0
+    bank = {}                              # r -> sig record, across all fetched txs
+    for addr in addrs:
+        cursor = ""
+        for _ in range(max_pages):
+            path = "/api/address/%s/txs%s" % (addr, ("?p=" + cursor) if cursor else "")
+            txs = tg.get(path)
+            if txs is None:
+                break
+            for tx in txs:
+                txid = tx.get("txid")
+                if txid in seen:
+                    continue
+                seen.add(txid)
+                fresh_total += 1
+                ss, g = sigs_from_tx(tx, txid)
+                for sg in ss:
+                    logline({"event": "address-move", "circuit": circuit, "addr": addr,
+                             "txid": txid, "sats": sg["value"],
+                             "direction": "spend" if sg["prev_txid"] else "coinbase"})
+                    prev = sg["r"] in bank
+                    bank.setdefault(sg["r"], sg)
+                    if prev:
+                        handle_collision(sg["r"], [bank[sg["r"]], sg], tg, circuit)
+            # Esplora pagination: p=N gives pages after the first; stop at <25
+            if len(txs) < 25:
+                break
+            cursor = str(int(cursor or 0) + 1)
+        break_out = None
+    seen_path.parent.mkdir(exist_ok=True)
+    seen_path.write_text(json.dumps(sorted(seen)))
+    logline({"event": "address-watch", "circuit": circuit, "targets": len(addrs),
+             "fresh_txs": fresh_total, "sigs_banked": len(bank)})
 
 
 # ----------------------------------------------------------------- selftest
