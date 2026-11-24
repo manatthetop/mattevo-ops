@@ -502,7 +502,19 @@ class TerminalDesk:
         self.engine = engine
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._ticker, daemon=True)
+        # A piped or scripted session has no caret to protect. Decide once, here, so
+        # every later branch (ticker, prompt, banner) reads the same flag.
+        self.tty = bool(sys.stdin and sys.stdin.isatty())
+        self.mute = threading.Event()     # set while input() owns the prompt line
     def start(self):
+        if not self.tty:
+            # Headless: no banner, no live board, no ticker thread, no prompt repaint.
+            # Commands come off piped stdin until EOF, then the ledgers save and the
+            # process exits. This is what makes `printf 'vault\nquit\n' |
+            # timeout 30 python3 mattevo.py` finish in well under a second.
+            self._setup_readline()
+            self._read_commands()
+            return
         self.home()
         self._setup_readline()
         if readline is not None:
@@ -542,6 +554,23 @@ class TerminalDesk:
         finally:
             self.stop.set()
             print(C["reset"], flush=True)
+    def _read_commands(self):
+        """Consume piped commands until EOF. No ticker, no prompt repaint."""
+        try:
+            while True:
+                try:
+                    raw = input().strip()
+                except EOFError:
+                    break
+                if not raw:
+                    continue
+                cmd, _, rest = raw.partition(" ")
+                self.dispatch(cmd, rest.split())
+                if cmd in ("quit", "exit", "q"):
+                    break
+        finally:
+            self.stop.set()
+            self.engine._save()
     def dispatch(self, cmd, args):
         e = self.engine
         if cmd in self.BY_NUM:

