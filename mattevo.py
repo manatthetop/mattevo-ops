@@ -440,6 +440,27 @@ BANNER = [
     '\x1b[0;37m   \x1b[0;31m▀▓░░▓▄\x1b[0;37m \x1b[0;31m▀▓░░░▓▄\x1b[0;37m \x1b[0;31m▀▓░░▓▄\x1b[0;37m   \x1b[0;31m▀▀██▄▄▓░░░▓▄\x1b[0;37m   \x1b[0;31m▀▓░░▓▄▄▓░░▓▄\x1b[0;37m   \x1b[0;31m▀▓░░▓▄▄▓░░▓▄\x1b[0;37m   \x1b[0;31m▀▓░▓▓█████▄\x1b[0;37m    \x1b[0;31m▀\x1b[0;91;41m▀\x1b[0;91m█\x1b[0;91;41m▓\x1b[0;91m▄█\x1b[0;91;41m▀\x1b[0;31m▀\x1b[0;37m      \x1b[0;91m▀\x1b[0;91;41m▓\x1b[0;91m██\x1b[0;91;41m▓\x1b[0;91m▄▄\x1b[0;91;41m▓\x1b[0;91;47m▓\x1b[0;33m▀\x1b[0;37m  \x1b[0m',
 ]
 
+def _find(e, name):
+    """Resolve a target by exact name, or case-insensitive unique prefix.
+
+    Strict substring matching only: a name that matches two targets is
+    AMBIGUOUS, never silently resolved. This is what kept a bare 'SEPA'
+    from being swallowed as a target and minting a phantom dossier.
+    """
+    if not name: return None
+    if name in e.targets: return e.targets[name]
+    k = name.lower()
+    exact = [n for n in e.targets if n.lower() == k]
+    if len(exact) == 1: return e.targets[exact[0]]
+    hits = [n for n in e.targets if k in n.lower()]
+    if len(hits) == 1: return e.targets[hits[0]]
+    if len(hits) > 1:
+        e.log(f"AMBIGUOUS: {', '.join(hits)}", "yellow")
+    else:
+        e.log(f"NO TARGET {name}; type bench to see the list", "yellow")
+    return None
+
+
 class TerminalDesk:
     PROMPT = "MATTevo> "
     HELP = [("new NAME onion", "queue a target, then: go NAME"),
@@ -497,6 +518,8 @@ class TerminalDesk:
                 e.log(f"[EYES] target {args[1]} ({args[2]}) queued", "blue")
             else:
                 print(e.bench())
+        elif cmd in ("add", "new") and len(args) == 1:
+            e.log("[DESK] add needs NAME and ONION; nothing queued", "yellow")
         elif cmd in ("add", "new") and len(args) >= 2:
             e.add_target(args[0], args[1])
             e.log(f"[EYES] target {args[0]} ({args[1]}) queued", "blue")
@@ -504,7 +527,7 @@ class TerminalDesk:
             if len(args) >= 2:
                 e.add_target(args[0], args[1])
                 e.log(f"[EYES] target {args[0]} ({args[1]}) queued", "blue")
-            t = e.pick(args[0] if args else None)
+            t = _find(e, args[0]) if args else None
             if t:
                 e.run_chain(t, stop_after="siphoned")
                 print(e.summary())
@@ -521,26 +544,29 @@ class TerminalDesk:
                 t.chain, t.forge_log, t.observations = [], [], []
                 e.log(f"[DESK] {t.name} reset to queued", "yellow")
         elif cmd == "run":
-            t = e.pick(args[0] if args else None)
+            t = _find(e, args[0]) if args else None
             if t:
                 e.run_chain(t, stop_after=args[1] if len(args) > 1 else "siphoned")
         elif cmd == "forge":
-            t = e.pick(args[0] if args else None)
+            t = _find(e, args[0]) if args else None
             if t: e.forge(t)
         elif cmd == "verify":
-            t = e.pick(args[0] if args else None)
+            t = _find(e, args[0]) if args else None
             if t: e.verify(t)
         elif cmd == "siphon":
-            t = e.pick(args[0] if args else None)
-            if t: e.siphon(t, float(args[1]) if len(args) > 1 else None)
+            t = _find(e, args[0]) if args else None
+            if t:
+                try: amt = float(args[1]) if len(args) > 1 else None
+                except ValueError: amt = None; e.log("[SIPHON] bad amount; default drip", "yellow")
+                e.siphon(t, amt)
         elif cmd == "destroy":
-            t = e.pick(args[0] if args else None)
+            t = _find(e, args[0]) if args else None
             if t: e.destroy(t, confirm="yes" in args[1:])
         elif cmd == "spot":
             s = e.spot
             print(paint("green", f"  COLD  ${s['cold_usd']:,.2f}    SPOT  ${s['spot_usd']:,.2f}    fee {s['fee_pct']}%"))
         elif cmd == "dossier" and args:
-            t = e.targets.get(args[0])
+            t = _find(e, args[0])
             if t: e.dossier(t)
         elif cmd == "vault":
             e.vault.status()
@@ -566,6 +592,9 @@ class TerminalDesk:
                 print(paint("white", r.stdout.strip() or "no commits yet"))
             except FileNotFoundError:
                 print(paint("yellow", "git not found; run setup_repo.sh first"))
+        elif cmd in ("inspect", "dossier"):
+            t = _find(e, args[0] if args else None)
+            if t: e.dossier(t)
         elif cmd in ("help", "?"):
             for name, desc in self.HELP:
                 print(paint("white", f"  {name:<22} {desc}"))
@@ -639,6 +668,7 @@ class TerminalDesk:
             if not self._key_pending():
                 self._restore_cursor()
         sys.stdout.write("\r" + " " * 78 + "\r")
+
 
 def _folders():
     for d in ("forge/library", "targets", "evidence", "vault", "ledgers", "desk", "prompts"):
