@@ -92,9 +92,20 @@ def mempool_signatures(sample=60):
         return [], 0, 0
     step = max(1, len(txids) // sample)
     picked = txids[::step][:sample]
+    # One GET per tx; on a 4 GB / 2-core box sequential HTTPS took ~24 s for 60
+    # fetches, so fan a small bounded pool. _get is offline-safe (returns None),
+    # and results are processed in pick order so dedup stays deterministic.
+    from concurrent.futures import ThreadPoolExecutor
+    def one(t):
+        for attempt in range(2):          # one retry: mirrors flake under load
+            d = _get("/tx/" + t)
+            if d is not None:
+                return t, d
+        return t, None
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        docs = list(ex.map(one, picked))
     sigs, seen = [], set()
-    for txid in picked:
-        d = _get("/tx/" + txid)
+    for txid, d in docs:
         if not d:
             continue
         for v in d.get("vin", []):

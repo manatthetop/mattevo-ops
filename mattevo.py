@@ -507,13 +507,27 @@ class TerminalDesk:
         self._setup_readline()
         if readline is not None:
             readline.set_completer(self._complete)
-        self.thread.start()
+        # The ticker repaints the prompt line every 0.5 s via _restore_cursor,
+        # which is exactly what garbles 'MATTevo>' under typed input and keeps
+        # the process alive after EOF on piped stdin. In a real terminal it also
+        # has to stop before input() ever reads: without that window, a piped
+        # 'quit' line gets overwritten by the prompt redraw and the desk hangs
+        # until timeout (exit 124). So: never start it on non-tty stdin, and
+        # stop it for the duration of every input() read.
+        self.tty = sys.stdin.isatty()
+        self.mute = threading.Event()     # set while input() owns the prompt line
+        if self.tty:
+            self.thread.start()
         self.engine.log("[DESK] online. new NAME onion to queue, go NAME to run it all, help for the rest.", "blue")
         self._prompt()
         try:
             while True:
                 try:
-                    raw = input().strip()
+                    self.mute.set()          # ticker checks this; prompt line is input()'s
+                    try:
+                        raw = input().strip()
+                    finally:
+                        self.mute.clear()
                 except EOFError:
                     break
                 if not raw:
@@ -786,7 +800,12 @@ class TerminalDesk:
             print(line)
         print(paint("white", "  men at the top - grey-hat interception engine  |  one target at a time"))
     def _ticker(self):
+        if not self.tty:
+            self.stop.wait()      # headless: never touch stdout, exit only on stop
+            return
         while not self.stop.wait(0.5):
+            if self.mute.is_set():
+                continue            # input() is mid-read; do not touch the screen
             e = self.engine
             parts = []
             for t in e.targets.values():
