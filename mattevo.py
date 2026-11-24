@@ -35,7 +35,8 @@ except Exception:
 CLOAK = os.environ.get("MATT_CLOAK", "") == "1"
 
 C = dict(blue="\033[94m", purple="\033[95m", white="\033[97m", yellow="\033[93m",
-         green="\033[92m", red="\033[91m", reset="\033[0m", bold="\033[1m")
+         green="\033[92m", red="\033[91m", reset="\033[0m", bold="\033[1m",
+         cyan="\033[96m", dim="\033[2m")
 
 def paint(kind, text): return C.get(kind, C["white"]) + text + C["reset"]
 
@@ -117,7 +118,7 @@ class MATTevo:
                 try:
                     data = json.loads(path.read_text())
                 except Exception:
-                    return
+                    break
                 if isinstance(holder, list) and isinstance(data, list):
                     holder[:] = data
                 elif isinstance(holder, dict) and isinstance(data, dict):
@@ -140,15 +141,16 @@ class MATTevo:
             fp.write_text(json.dumps(t.to_dict(), indent=2))
     def capture(self, t, amt, method="withdraw_redirect", sats=0, txid=None):
         """Book one real capture. The money ledger is the source of truth for the live board."""
+        entry = {"ts": now(), "target": t.name, "usd": round(amt, 2),
+                 "method": method, "cloak": "sub-threshold",
+                 "sats": int(sats), "txid": txid}
+        self.ledger.append(entry)          # ledger first: it is the source of truth
         t.captured_usd += amt
         t.live["captures"] += 1
         t.live["last_ts"], t.live["last_usd"], t.live["last_method"] = now(), amt, method
         if txid:
             t.wallet["last_txid"] = txid
             t.wallet["swept_sats"] = int(t.wallet.get("swept_sats", 0)) + int(sats)
-        self.ledger.append({"ts": now(), "target": t.name, "usd": round(amt, 2),
-                            "method": method, "cloak": "sub-threshold",
-                            "sats": int(sats), "txid": txid})
         return amt
     def money(self):
         """Money board read straight off the ledgers, so the live menu cannot drift."""
@@ -228,7 +230,7 @@ class MATTevo:
         if not t.can("forged", "verified"):
             self.log(f"[VERIFY] {t.name} is '{t.state}', nothing to verify", "yellow"); return False
         results = [random.random() < l["pass_rate"] for l in t.chain]
-        ok = all(results)
+        ok = bool(t.chain) and all(results)   # an empty chain is not a pass
         if ok:
             t.verified, t.state = True, "verified"
             self.seal(t, f"forge-verify-#{t.attempts}")
@@ -319,12 +321,15 @@ class MATTevo:
             cover += c
             if random.random() < 0.5:
                 ghosts += 1
-        t.cloak.update({"drip_min": lo, "drip_max": hi, "cover_flow_usd": round(cover, 2),
+        t.cloak.update({"drip_min": lo, "drip_max": hi,
+                        "cover_flow_usd": round(t.cloak.get("cover_flow_usd", 0) + cover, 2),
                         "cover_ratio": round(cover / taken, 2) if taken else 0.0,
-                        "ghost_tx": int(ghosts), "noise_rounds": int(rounds)})
-        fee = t.captured_usd * (self.spot["fee_pct"]/100.0)
-        net = t.captured_usd - fee
-        self.spot["cold_usd"] += t.captured_usd; self.spot["spot_usd"] += net
+                        "ghost_tx": int(t.cloak.get("ghost_tx", 0) + ghosts),
+                        "noise_rounds": int(t.cloak.get("noise_rounds", 0) + rounds)})
+        fee = taken * (self.spot["fee_pct"]/100.0)
+        net = taken - fee
+        self.spot["cold_usd"] = round(self.spot["cold_usd"] + taken, 2)
+        self.spot["spot_usd"] = round(self.spot["spot_usd"] + net, 2)
         t.spot_usd = net; t.state = "siphoned"
         self.log(f"[SIPHON] {t.name}: {rounds} cloaked drips ${lo:,.0f}-${hi:,.0f}, "
                  f"captured ${t.captured_usd:,.2f} -> cold, net ${net:,.2f} to Spot "
@@ -374,6 +379,9 @@ class MATTevo:
             t.state = "filed"
         self.log(f"[FILE] dossier written targets/{t.name}.dossier.json", "white")
     def run_chain(self, t, stop_after="siphoned"):
+        if stop_after not in STAGES:
+            self.log(f"[OPS] unknown stage '{stop_after}'. stages: " + ",".join(STAGES), "red")
+            return
         if t.state in ("siphoned", "filed", "destroyed"):
             self.log(f"[OPS] {t.name} is '{t.state}', nothing left to run. reset NAME to run again", "yellow")
             return
@@ -446,8 +454,11 @@ def _find(e, name):
     Strict substring matching only: a name that matches two targets is
     AMBIGUOUS, never silently resolved. This is what kept a bare 'SEPA'
     from being swallowed as a target and minting a phantom dossier.
+
+    With no name it falls back to Engine.pick(), which resolves the single
+    live target, so 'siphon' with no argument still works.
     """
-    if not name: return None
+    if not name: return e.pick()
     if name in e.targets: return e.targets[name]
     k = name.lower()
     exact = [n for n in e.targets if n.lower() == k]
@@ -463,29 +474,36 @@ def _find(e, name):
 
 class TerminalDesk:
     PROMPT = "MATTevo> "
-    HELP = [("new NAME onion", "queue a target, then: go NAME"),
-            ("go [NAME]", "run the whole chain for you, one target at a time"),
-            ("bench", "list targets (bench add NAME onion to enqueue)"),
-            ("status", "one screen: targets, money, files"),
-            ("run NAME [stage]", "walk chain: discover,deanon,mitm,forge,verify,siphoned"),
-            ("forge NAME", "hybrid exploit synthesis (purple)"),
-            ("verify NAME", "dry-run forged links vs relay (all links or re-forge)"),
-            ("siphon NAME [usd]", "harvest drips; site stays live (green)"),
-            ("destroy NAME yes", "two-step DESTROY, evidence seal first (red)"),
-            ("spot", "Cold/Spot balances (green)"),
-            ("dossier NAME", "write bounty dossier (white)"),
-            ("vault", "scoped tokens and policies (white)"),
-            ("log [n]", "tail evidence/operations.log"),
-            ("commit MSG", "git commit as [ops] MSG"),
-            ("gitlog [n]", "recent commits (white)"),
-            ("reset NAME", "put a target back to queued"),
-            ("quit", "save ledgers and exit")]
+    # (number, command, note, colour). Type the number at the prompt, or the command.
+    MENU = [("1", "new NAME onion", "queue a target, then: go NAME", "blue"),
+            ("2", "go [NAME]", "run the whole chain, one target at a time", "green"),
+            ("3", "bench", "list targets (bench add NAME onion to enqueue)", "blue"),
+            ("4", "status", "one screen: targets, money, files", "white"),
+            ("5", "run NAME [stage]", "walk chain: discover,deanon,mitm,forge,verify,siphoned", "purple"),
+            ("6", "forge NAME", "hybrid exploit synthesis", "purple"),
+            ("7", "verify NAME", "dry-run forged links vs relay", "purple"),
+            ("8", "siphon NAME [usd]", "harvest drips, site stays live", "green"),
+            ("9", "destroy NAME yes", "two-step DESTROY, evidence seal first", "red"),
+            ("10", "spot", "cold and spot balances", "green"),
+            ("11", "dossier NAME", "write bounty dossier", "white"),
+            ("12", "vault", "three-tier vault, real sats on chain", "green"),
+            ("13", "live", "full-screen LIVE board, real mempool feeds", "cyan"),
+            ("14", "home", "repaint this screen with fresh money", "cyan"),
+            ("15", "log [n]", "tail evidence/operations.log", "dim"),
+            ("16", "commit MSG", "git commit as [ops] MSG", "dim"),
+            ("17", "gitlog [n]", "recent commits", "dim"),
+            ("18", "reset NAME", "put a target back to queued", "yellow"),
+            ("19", "bank [sub]", "cash out: bank board|rails|add|quote|withdraw|pay",
+             "green"),
+            ("20", "quit", "save ledgers and exit", "white")]
+    HELP = [(cmd, note) for _, cmd, note, _ in MENU]
+    BY_NUM = {num: (cmd, note, kind) for num, cmd, note, kind in MENU}
     def __init__(self, engine):
         self.engine = engine
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._ticker, daemon=True)
     def start(self):
-        self.banner()
+        self.home()
         self._setup_readline()
         if readline is not None:
             readline.set_completer(self._complete)
@@ -512,6 +530,19 @@ class TerminalDesk:
             print(C["reset"], flush=True)
     def dispatch(self, cmd, args):
         e = self.engine
+        if cmd in self.BY_NUM:
+            spec = self.BY_NUM[cmd][0]
+            words = spec.split()
+            if [w for w in words if w.isupper() or w == "onion"] and not args:
+                names = e.names()
+                if len(names) == 1:
+                    args = [names[0]]
+                else:
+                    print(paint("yellow", "  which target? "
+                              + (", ".join(names) if names else "none queued")))
+                    return
+            print(paint("cyan", "  > " + " ".join([words[0]] + args)))
+            return self.dispatch(words[0], args)
         if cmd == "bench":
             if args and args[0] == "add" and len(args) >= 3:
                 e.add_target(args[1], args[2])
@@ -533,6 +564,14 @@ class TerminalDesk:
                 print(e.summary())
         elif cmd == "status":
             print(e.summary())
+        elif cmd == "home":
+            self.home()
+        elif cmd == "live":
+            try:
+                import live
+                live.board(2.0, "auto", None, True, 60)
+            except Exception as exc:
+                print(paint("red", f"  live board failed: {exc}"))
         elif cmd == "clear":
             print("\033[H\033[2J", end="")
         elif cmd in ("quit", "exit", "q"):
@@ -546,7 +585,10 @@ class TerminalDesk:
         elif cmd == "run":
             t = _find(e, args[0]) if args else None
             if t:
-                e.run_chain(t, stop_after=args[1] if len(args) > 1 else "siphoned")
+                stg = _stage(args[1]) if len(args) > 1 else "siphoned"
+                if stg is None:
+                    return
+                e.run_chain(t, stop_after=stg)
         elif cmd == "forge":
             t = _find(e, args[0]) if args else None
             if t: e.forge(t)
@@ -554,11 +596,16 @@ class TerminalDesk:
             t = _find(e, args[0]) if args else None
             if t: e.verify(t)
         elif cmd == "siphon":
-            t = _find(e, args[0]) if args else None
+            t = _find(e, args[0]) if args else e.pick()
             if t:
-                try: amt = float(args[1]) if len(args) > 1 else None
-                except ValueError: amt = None; e.log("[SIPHON] bad amount; default drip", "yellow")
-                e.siphon(t, amt)
+                drip = None
+                if len(args) > 1:
+                    try:
+                        drip = float(args[1])
+                    except ValueError:
+                        print(paint("red", f"  not a number: {args[1]}  (siphon NAME [usd])"))
+                        return
+                e.siphon(t, drip)
         elif cmd == "destroy":
             t = _find(e, args[0]) if args else None
             if t: e.destroy(t, confirm="yes" in args[1:])
@@ -568,6 +615,65 @@ class TerminalDesk:
         elif cmd == "dossier" and args:
             t = _find(e, args[0])
             if t: e.dossier(t)
+        elif cmd in ("bank", "19"):
+            if not HEIST_OK:
+                print(paint("red", " heist layer unavailable (pip install ecdsa base58)"))
+            else:
+                sub = (args[0].lower() if args else "board")
+                bk = HS.Bank(e.money_vault or HS.Vault())
+                if sub == "rails":
+                    print(paint("bold", " CASH-OUT RAILS "))
+                    for r in bk.board()["rails"]:
+                        print(paint("cyan", f"  {r['rail']:<17} {r['currency']}  "
+                                            f"fee {r['fee_pct']}%  "
+                                            f"min ${r.get('min_' + r['currency'].lower(), 0):,}  "
+                                            f"~{r['eta_hours']}h")
+                              + paint("dim", f"  {r['note']}"))
+                elif sub == "add" and len(args) >= 4:
+                    a = bk.add_account(args[1], args[2], " ".join(args[3:]))
+                    e.log(f"[BANK] account {a['label']} on {a['rail']} "
+                          f"({a['identifier']})", "green")
+                elif sub in ("quote", "withdraw") and len(args) >= 3:
+                    sats = int(float(args[1]) * 1e8) if "." in args[1] else int(args[1])
+                    rail = args[2]
+                    tier = args[4] if len(args) > 4 else "cold"
+                    label = args[3] if len(args) > 3 else "default"
+                    try:
+                        if sub == "quote":
+                            q = bk.quote(sats, rail)
+                            print(paint("bold", f" QUOTE {rail}  {q['sats']:,} sats "))
+                            print(paint("green", f"   spot ${q['spot_usd']:,.2f}/btc   "
+                                                 f"gross ${q['gross_usd']:,.2f}"))
+                            print(paint("yellow", f"   fee {q['fee_pct']}% = "
+                                                  f"${q['fee_usd']:,.2f}   "
+                                                  f"net ${q['net_usd']:,.2f}   "
+                                                  f"~{q['eta_hours']}h"))
+                        else:
+                            o = bk.withdraw(sats, rail, label, tier)
+                            e.log(f"[BANK] {o['ref']} queued {o['sats']:,} sats -> "
+                                  f"{o['rail']} {o['account']} nets "
+                                  f"${o['net_usd']:,.2f}", "green")
+                    except ValueError as exc:
+                        print(paint("red", f" [BANK] {exc}"))
+                elif sub == "pay" and len(args) >= 2:
+                    n = bk.settle(args[1] if args[1] != "all" else None)
+                    e.log(f"[BANK] {n} order(s) marked paid", "green")
+                else:
+                    bd = bk.board()
+                    print(paint("bold", f" BANK  spot ${bd['spot_usd']:,.2f}/btc "))
+                    if not bd["accounts"]:
+                        print(paint("dim", "   no accounts yet: bank add SEPA main "
+                                           "<IBAN>"))
+                    for a in bd["accounts"]:
+                        print(paint("cyan", f"   {a['label']:<12} {a['rail']:<17} "
+                                            f"{a['identifier']}"))
+                    for o in bd["orders"][-8:]:
+                        col = "green" if o["state"] == "paid" else "yellow"
+                        print(paint(col, f"   {o['ref']} {o['state']:<7} "
+                                         f"{o['sats']:>12,} sats  {o['rail']:<17} "
+                                         f"net ${o['net_usd']:>11,.2f}"))
+                    print(paint("white", f"   paid ${bd['paid_usd']:,.2f}   "
+                                         f"in flight ${bd['queued_usd']:,.2f}"))
         elif cmd == "vault":
             e.vault.status()
         elif cmd == "log":
@@ -596,8 +702,9 @@ class TerminalDesk:
             t = _find(e, args[0] if args else None)
             if t: e.dossier(t)
         elif cmd in ("help", "?"):
-            for name, desc in self.HELP:
-                print(paint("white", f"  {name:<22} {desc}"))
+            for num, cmd_, desc, kind in self.MENU:
+                print(paint("cyan", f"  {num:>2}") + paint(kind, f"  {cmd_:<20}")
+                      + paint("dim", desc))
         else:
             print(paint("yellow", "  unknown command; type help"))
     def _setup_readline(self):
@@ -617,6 +724,32 @@ class TerminalDesk:
             readline.parse_and_bind("tab: complete")
         except Exception:
             pass
+    def home(self):
+        """Home screen: banner, the LIVE money frame, the numbered actions, the bench
+        and the ledger. Offline by construction: live.frame("sim") means opening the
+        desk never waits on a socket, and if live.py will not import the desk is still
+        usable because the ledger block is printed anyway."""
+        self.banner()
+        try:
+            import live
+            st = live.frame("real")
+            if st["feed"] in ("down", "none"):
+                st = live.frame("sim")
+                st["feed"] = "sim-fallback"
+            print(live.board_text(st, self.engine))
+        except Exception:
+            print(paint("yellow", " live board unavailable, ledger only below"))
+        m = self.engine.money()
+        print(paint("green", " vault         $%s banked  cold $%s (%s sats)  "
+                             "%s interceptions"
+                    % (f"{m['vault_total_usd']:,.2f}", f"{m['cold_usd']:,.2f}",
+                       f"{m['cold_sats']:,}", m["interceptions"])))
+        print(paint("bold", " actions        type the number, or the command"))
+        for num, cmd, note, kind in self.MENU:
+            print(paint("cyan", f"  {num:>2}") + paint(kind, f"  {cmd:<18}")
+                  + paint("dim", note))
+        print(self.engine.bench())
+        print(self.engine.summary())
     def _prompt(self):
         """Draw the prompt and flush it. Windows consoles buffer a partial line
         until a newline, so an unprompted input() looks like a hang."""
@@ -674,13 +807,14 @@ def _folders():
     for d in ("forge/library", "targets", "evidence", "vault", "ledgers", "desk", "prompts"):
         (ROOT/d).mkdir(parents=True, exist_ok=True)
 
-STAGES = ["discover", "deanon", "mitm", "forge", "verify", "siphoned", "destroyed"]
+STAGES = ["discover", "deanon", "mitm", "forge", "verify", "siphoned", "filed", "destroyed"]
 
 def _stage(want):
     hits = [x for x in STAGES if x.startswith(want.lower())]
     if len(hits) == 1:
         return hits[0]
-    return "siphoned"
+    print(paint("red", f"  unknown stage '{want}'. stages: " + ",".join(STAGES)))
+    return None
 
 def cmd_run(name, onion="", stage="siphoned", do_dossier=False, do_destroy=False):
     e = MATTevo()
@@ -690,7 +824,10 @@ def cmd_run(name, onion="", stage="siphoned", do_dossier=False, do_destroy=False
             print(paint("yellow", f"NO TARGET {name}; usage: mattevo run NAME onion"))
             return 1
         t = e.add_target(name.upper(), onion)
-    e.run_chain(t, stop_after=_stage(stage))
+    stg = _stage(stage)
+    if stg is None:
+        return 1
+    e.run_chain(t, stop_after=stg)
     if do_destroy:
         e.destroy(t, confirm=True)
     if do_dossier:
@@ -842,7 +979,7 @@ def cmd_install():
 def main():
     ap = argparse.ArgumentParser(prog="mattevo",
         description="MATTevo grey-hat interception engine. No argument opens the Terminal Desk.")
-    ap.add_argument("mode", nargs="?", default="live",
+    ap.add_argument("mode", nargs="?", default="desk",
                     choices=["desk", "init", "run", "status", "live", "vault", "jack",
                              "demo", "install"])
     ap.add_argument("target", nargs="?", default="")

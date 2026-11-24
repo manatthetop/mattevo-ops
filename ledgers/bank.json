@@ -1,0 +1,29 @@
+{
+  "accounts": [
+    {
+      "rail": "SEPA",
+      "label": "main",
+      "identifier": "DE89 3704 0044 0532 0130 00",
+      "currency": "EUR",
+      "added": "2026-11-24T04:53:51Z"
+    }
+  ],
+  "orders": [
+    {
+      "ref": "BK420555847A",
+      "rail": "SEPA",
+      "currency": "EUR",
+      "account": "main",
+      "tier_from": "cold",
+      "sats": 26457783,
+      "spot_usd": 60419.0,
+      "gross_usd": 15985.53,
+      "fee_usd": 55.95,
+      "net_usd": 15929.58,
+      "state": "paid",
+      "eta_hours": 24,
+      "opened": "2026-11-24T04:53:51Z",
+      "settled": "2026-11-24T04:53:51Z"
+    }
+  ]
+}

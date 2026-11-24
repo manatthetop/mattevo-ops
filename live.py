@@ -170,36 +170,59 @@ def engine_rows(eng):
     return rows
 
 
-def render(st, engine_board=None):
-    """Paint one frame. ANSI only, no curses, so it survives being piped to a log."""
+def frame_text(st, engine_board=None, indent=""):
+    """Build one frame as a string. ANSI only, no curses, so it survives a pipe to a
+    log and so the desk can print it under the banner without clearing the screen."""
     try:
         from mattevo import paint
     except Exception:
         def paint(k, t): return t
-    print("\x1b[2J\x1b[H", end="")
-    print(paint("magenta", " MATTevo LIVE  feed=%s  height=%s" %
-                (st["feed"], st["height"])))
-    f = st["fees"]
-    print(paint("white", " fees sat/vB  fast %s  half-hour %s  hour %s" %
-                (f.get("fastestFee", "-"), f.get("halfHourFee", "-"),
-                 f.get("hourFee", "-"))))
-    print(paint("cyan", " mempool       %s of %s txs sampled, %s real signatures decoded" %
-                (st["txs_seen"], f"{st['mempool_size']:,}", st["sigs_seen"])))
+    out = []
+    feed = st.get("feed", "none")
+    fk = ("green" if feed in ("real", "live")
+          else "yellow" if feed == "sim-fallback" else "red")
+    out.append(paint("magenta", " MATTevo LIVE ") + paint(fk, "feed " + str(feed).upper())
+               + paint("white", "  block %s" % st.get("height", "-")))
+    f = st.get("fees") or {}
+    out.append(paint("white", " fees sat/vB  ")
+               + paint("green", "fast %s" % f.get("fastestFee", "-")) + paint("white", "   ")
+               + paint("cyan", "half-hour %s" % f.get("halfHourFee", "-")) + paint("white", "   ")
+               + paint("blue", "hour %s" % f.get("hourFee", "-")))
+    out.append(paint("white", " mempool       %s of %s txs sampled, %s real signatures decoded"
+                     % (st.get("txs_seen", 0), f"{st.get('mempool_size', 0):,}",
+                        st.get("sigs_seen", 0))))
     spot = st.get("spot_usd")
-    print(paint("white", " btc spot      %s" %
-                (("$" + f"{spot:,.0f}") if spot else "unpriced")))
-    key = "green" if st["reuse_buckets"] == 0 else "yellow"
-    risk = st["sats_at_risk"]
+    out.append(paint("white", " btc spot      ")
+               + (paint("green", "$" + f"{spot:,.0f}") if spot else paint("yellow", "unpriced")))
+    risk = st.get("sats_at_risk", 0)
+    buckets = st.get("reuse_buckets", 0)
+    key = "green" if buckets == 0 else "yellow" if buckets < 4 else "red"
     usd = ("  $" + f"{risk / 1e8 * spot:,.2f}") if (spot and risk) else ""
-    print(paint(key, " k-reuse scan  %s duplicate-r buckets, worst %s sigs, "
-                     "%s sats exposed%s" %
-                (st["reuse_buckets"], st["worst_bucket"], f"{risk:,}", usd)))
+    out.append(paint(key, " k-reuse scan  %s duplicate-r buckets, worst %s sigs, %s sats exposed%s"
+                     % (buckets, st.get("worst_bucket", 0), f"{risk:,}", usd)))
     if engine_board:
+        out.append(paint("bold", " money ledger"))
         for row in engine_board:
-            print(paint("white", "   %-12s captures %-3s captured $%-10s spot $%s" %
-                        (row.get("name", "?"), row.get("captures", 0),
-                         row.get("captured_usd", 0), row.get("spot_usd", 0))))
+            nm = row.get("name", "?")
+            cap = row.get("captured_usd", 0)
+            rk = "green" if nm == "TOTAL" else "white" if cap else "dim"
+            out.append(paint(rk, "   %-12s captures %-3s captured $%-10s spot $%s"
+                             % (nm, row.get("captures", 0), cap, row.get("spot_usd", 0))))
+    body = "\n".join(out)
+    return "\n".join(indent + ln for ln in body.splitlines()) if indent else body
+
+
+def render(st, engine_board=None):
+    """Full-screen paint for `mattevo live`. The desk uses frame_text instead."""
+    print("\x1b[2J\x1b[H", end="")
+    print(frame_text(st, engine_board))
     return st
+
+
+def board_text(st, eng=None):
+    """One frame as text, engine board included. The desk prints this under its
+    banner instead of clearing the screen."""
+    return frame_text(st, engine_rows(eng))
 
 
 def board(interval=2.0, mode="auto", target=None, once=False, sample=60):
@@ -216,6 +239,11 @@ def board(interval=2.0, mode="auto", target=None, once=False, sample=60):
             st = frame("sim")
             st["feed"] = "sim-fallback"
         render(st, engine_rows(eng))
+        if eng is not None:
+            try:
+                eng._load()
+            except Exception:
+                pass
         if once:
             return 0
         time.sleep(max(0.2, float(interval)))

@@ -78,3 +78,6 @@ Up and down arrows replay history, Tab completes commands and target names.
 `forge/library` exploits, `targets` dossiers, `evidence` chain log and operations log,
 `vault` scoped tokens, `ledgers` money and spot, `desk` and `prompts` scratch space.
 All created on first run, all git-ignored so live operations never land in the repo.
+
+`ledgers/bank.json` is the one exception: it IS tracked and public. Never put a
+real IBAN or account number in it unredacted, the repo is public.

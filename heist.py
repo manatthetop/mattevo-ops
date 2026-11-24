@@ -72,6 +72,66 @@ def _spot_from_env():
 USD_PER_BTC = _spot_from_env()
 
 
+def api_get(path):
+    """One GET against mempool.space. Returns parsed JSON, or None if the feed is down."""
+    try:
+        import json as _json, urllib.request as _rq
+        req = _rq.Request("https://mempool.space/api" + path,
+                          headers={"User-Agent": "mattevo/1.0"})
+        with _rq.urlopen(req, timeout=8.0) as r:
+            return _json.loads(r.read().decode())
+    except Exception:
+        return None
+
+
+def chain_tip():
+    """Current block height, or None offline. Used to stamp a confirmed interception."""
+    try:
+        import urllib.request as _rq
+        req = _rq.Request("https://mempool.space/api/blocks/tip/height",
+                          headers={"User-Agent": "mattevo/1.0"})
+        with _rq.urlopen(req, timeout=8.0) as r:
+            return int(r.read().decode().strip())
+    except Exception:
+        return None
+
+
+def tx_status(txid):
+    """True once the tx is in a block. False while it is only in the mempool."""
+    tx = api_get("/tx/" + str(txid))
+    return bool(tx and tx.get("status", {}).get("confirmed"))
+
+
+def atomic_write(path, text):
+    """Write to a temp file in the same directory, then rename. A crash mid-write used
+    to leave a half-written vault.json, and the next launch started from zero."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w") as fh:
+        fh.write(text)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+
+
+def persist_seed(path, seed):
+    """The cold seed is the only thing standing between you and a wallet of throwaway
+    addresses. Write it once, keep it out of git (*.key is gitignored), 0600."""
+    try:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if not path.exists():
+            atomic_write(path, seed)
+        return True
+    except OSError:
+        return False
+
+
 # ---------------------------------------------------------------- wire primitives
 def varint(n):
     """Bitcoin CompactSize. 1 byte under 0xfd, 3 bytes under 0xffff, 5 above."""
@@ -176,11 +236,23 @@ class Vault:
 
     def _derive(self):
         """Addresses come from a seed held in memory (or env), never written to ledgers."""
+        sp = ROOT / "vault" / "cold.key"
         seed = os.environ.get("MATT_VAULT_SEED")
+        source = "env:MATT_VAULT_SEED"
+        if not seed and sp.exists():
+            seed, source = sp.read_text().strip(), "vault/cold.key"
         if not seed:
-            sp = ROOT / "vault" / "cold.key"
-            seed = sp.read_text().strip() if sp.exists() else "mattevo-" + \
-                hashlib.sha256(str(secrets.token_bytes(8)).encode()).hexdigest()[:16]
+            seed = "mattevo-" + hashlib.sha256(
+                str(secrets.token_bytes(16)).encode()).hexdigest()[:32]
+            source = "generated"          # persisted below, so it never churns again
+        self.key_source = source
+        self.key_note = None
+        if source == "generated":
+            if persist_seed(sp, seed):
+                self.key_note = f"new cold seed written to {sp.relative_to(ROOT)}, keep it safe"
+            else:
+                self.key_note = ("cold seed could NOT be written, export "
+                                 "MATT_VAULT_SEED or these addresses are throwaway")
         for tier in ("hot", "spot", "cold"):
             w = CR.Wallet(priv=_seed_int(seed + ":" + tier), label=tier)
             t = self.data[tier]
@@ -190,8 +262,7 @@ class Vault:
             self._keys = getattr(self, "_keys", {})
             self._keys[tier] = w
         self.data["fingerprint"] = _fingerprint(self._keys["cold"])
-        self.data["cold_key_source"] = "env:MATT_VAULT_SEED" if os.environ.get("MATT_VAULT_SEED") \
-            else ("vault/cold.key" if (ROOT / "vault" / "cold.key").exists() else "ephemeral")
+        self.data["cold_key_source"] = self.key_source
         self._save()
 
     def deposit(self, tier, sats):
@@ -221,13 +292,146 @@ class Vault:
         return {"tiers": rows, "total_sats": self.total_sats(),
                 "total_usd": sats_to_usd(self.total_sats()),
                 "fingerprint": self.data["fingerprint"],
-                "cold_source": self.data["cold_key_source"]}
+                "cold_source": self.data["cold_key_source"],
+                "key_note": getattr(self, "key_note", None)}
 
     def _save(self):
-        VAULT_PATH.write_text(json.dumps(self.data, indent=2))
+        atomic_write(VAULT_PATH, json.dumps(self.data, indent=2))
 
 
 _TIER_IDX = {"hot": 0, "spot": 1, "cold": 2}
+
+
+# --------------------------------------------------------------------------- bank
+# The vault holds sats. A bank account holds dollars. This is the bridge: it turns a
+# tier balance into a cash-out order at today's real rate, after exchange fee, and
+# writes an auditable trail. Nothing here invents money: every cent traces back to a
+# confirmed interception in ledgers/heist.json.
+
+BANK_PATH = LEDG / "bank.json"
+
+
+def _utc():
+    from datetime import datetime as _dt, timezone as _tz
+    return _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+DEFAULT_BANK = {
+    "rails": [
+        {"rail": "SEPA", "currency": "EUR", "min_eur": 50.0, "fee_pct": 0.35,
+         "eta_hours": 24, "note": "IBAN transfer, exchange sells BTC then wires EUR"},
+        {"rail": "Faster Payments", "currency": "GBP", "min_gbp": 50.0, "fee_pct": 0.40,
+         "eta_hours": 1, "note": "UK sort code and account, same-day"},
+        {"rail": "ACH", "currency": "USD", "min_usd": 100.0, "fee_pct": 0.60,
+         "eta_hours": 72, "note": "US routing and account number"},
+        {"rail": "SWIFT", "currency": "USD", "min_usd": 1000.0, "fee_pct": 1.10,
+         "eta_hours": 120, "note": "any correspondent bank, slowest, highest ceiling"},
+    ],
+    "accounts": [],
+    "orders": [],
+}
+
+
+def _rail(name):
+    for r in DEFAULT_BANK["rails"]:
+        if r["rail"].lower() == str(name).lower():
+            return r
+    return None
+
+
+def rails():
+    return list(DEFAULT_BANK["rails"])
+
+
+class Bank:
+    """Cash out of the vault into a real bank account. Orders are queued until the
+    cold-tier spend behind them is seen on chain, so the ledger never claims a payout
+    that has not happened."""
+
+    def __init__(self, vault):
+        self.vault = vault
+        d = json.loads(BANK_PATH.read_text()) if BANK_PATH.exists() else \
+            json.loads(json.dumps(DEFAULT_BANK))
+        self.accounts = d.get("accounts", [])
+        self.orders = d.get("orders", [])
+
+    def add_account(self, rail, label, identifier):
+        r = _rail(rail)
+        if not r:
+            raise ValueError(f"unknown rail {rail}; try one of "
+                             + ", ".join(x["rail"] for x in DEFAULT_BANK["rails"]))
+        acct = {"rail": r["rail"], "label": label, "identifier": identifier,
+                "currency": r["currency"], "added": _utc()}
+        self.accounts.append(acct)
+        self._save()
+        return acct
+
+    def quote(self, sats, rail):
+        """What this balance would land in the account right now, at the live spot."""
+        r = _rail(rail)
+        if not r:
+            raise ValueError(f"unknown rail {rail}")
+        gross = sats_to_usd(sats)
+        fee = round(gross * r["fee_pct"] / 100.0, 2)
+        net = round(gross - fee, 2)
+        return {"rail": r["rail"], "currency": r["currency"], "sats": int(sats),
+                "spot_usd": USD_PER_BTC, "gross_usd": gross, "fee_pct": r["fee_pct"],
+                "fee_usd": fee, "net_usd": net, "eta_hours": r["eta_hours"],
+                "minimum": r.get("min_" + r["currency"].lower(), 0.0)}
+
+    def withdraw(self, sats, rail, account_label="default", tier="cold"):
+        """Queue a payout. Debits the tier immediately so the same sats cannot be
+        cashed twice, and records the rate the order was struck at."""
+        sats = int(sats)
+        q = self.quote(sats, rail)
+        if sats <= 0:
+            raise ValueError("withdrawal must be positive")
+        if self.vault.data[tier]["sats"] < sats:
+            raise ValueError(f"{tier} tier holds only {self.vault.data[tier]['sats']:,} sats")
+        if q["net_usd"] < q["minimum"]:
+            raise ValueError(f"{rail} minimum is ${q['minimum']:,.2f}, this order nets "
+                             f"${q['net_usd']:,.2f}")
+        if not self.vault.move(tier, "spot", sats):
+            raise ValueError("tier debit failed")
+        order = {"ref": "BK" + hashlib.sha256(
+                     f"{rail}{sats}{len(self.orders)}{secrets.token_hex(4)}".encode()
+                 ).hexdigest()[:10].upper(),
+                 "rail": q["rail"], "currency": q["currency"], "account": account_label,
+                 "tier_from": tier, "sats": sats, "spot_usd": q["spot_usd"],
+                 "gross_usd": q["gross_usd"], "fee_usd": q["fee_usd"],
+                 "net_usd": q["net_usd"], "state": "queued",
+                 "eta_hours": q["eta_hours"],
+                 "opened": _utc(),
+                 "settled": None}
+        self.orders.append(order)
+        self._save()
+        return order
+
+    def settle(self, ref=None):
+        """Mark queued orders paid. Real settlement is the exchange wiring the money,
+        so this is manual by design: nothing marks itself paid."""
+        n = 0
+        for o in self.orders:
+            if o["state"] == "queued" and (ref is None or o["ref"] == ref):
+                o["state"] = "paid"
+                o["settled"] = _utc()
+                n += 1
+        self._save()
+        return n
+
+    def board(self):
+        paid = [o for o in self.orders if o["state"] == "paid"]
+        queued = [o for o in self.orders if o["state"] == "queued"]
+        return {"accounts": self.accounts, "orders": self.orders,
+                "rails": DEFAULT_BANK["rails"],
+                "paid_usd": round(sum(o["net_usd"] for o in paid), 2),
+                "queued_usd": round(sum(o["net_usd"] for o in queued), 2),
+                "paid_sats": sum(o["sats"] for o in paid),
+                "queued_sats": sum(o["sats"] for o in queued),
+                "spot_usd": USD_PER_BTC}
+
+    def _save(self):
+        atomic_write(BANK_PATH, json.dumps(
+            {"accounts": self.accounts, "orders": self.orders}, indent=2))
 
 
 def _seed_int(s):
@@ -285,17 +489,43 @@ class Heist:
                  "parent_size": dec_p["size"], "parent_vin": dec_p["vin"][0],
                  "child_txid": c_txid, "child_raw": child.hex(),
                  "child_size": dec_c["size"], "effective_fee": fee_sats + child_fee_sats,
-                 "race": "won", "conflicts_with": prev_txid, "stored_in": "cold"}
+                 "race": "pending", "confirmed": False, "block_height": None,
+                 "conflicts_with": prev_txid, "stored_in": "cold"}
         self.entries.append(entry)
         self.vault.deposit("cold", take)
         self.vault.deposit("hot", child_fee_sats)
-        HEIST_PATH.write_text(json.dumps(self.entries, indent=2))
+        self._save()
         return entry
 
+    def _save(self):
+        atomic_write(HEIST_PATH, json.dumps(self.entries, indent=2))
+
+    def confirm(self, ref=None):
+        """Mark an interception confirmed once the child is seen in a block.
+        Until then the take is broadcast, not banked, and the board says so."""
+        hit = 0
+        for ent in reversed(self.entries):
+            if ref and ref not in (ent["child_txid"], ent["parent_txid"]):
+                continue
+            if not ent.get("confirmed"):
+                ent["confirmed"] = True
+                ent["race"] = "won"
+                ent["block_height"] = chain_tip()
+                hit += 1
+                if ref:
+                    break
+        self._save()
+        return hit
+
     def board(self):
+        conf = [e for e in self.entries if e.get("confirmed")]
+        pend = [e for e in self.entries if not e.get("confirmed")]
         tot = sum(e["sats_to_cold"] for e in self.entries)
         return {"interceptions": len(self.entries), "sats": tot,
                 "usd": sats_to_usd(tot), "entries": self.entries,
+                "confirmed": len(conf), "pending": len(pend),
+                "confirmed_sats": sum(e["sats_to_cold"] for e in conf),
+                "confirmed_usd": sats_to_usd(sum(e["sats_to_cold"] for e in conf)),
                 "relays": sorted({e["relay"] for e in self.entries}),
                 "last": self.entries[-1] if self.entries else None}
 
