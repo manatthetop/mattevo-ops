@@ -1,29 +1,29 @@
 {
   "hot": {
     "label": "hot-cpfp-change",
-    "address": "1J4MseBgLDjGLexEFLSLxtdVAnYd1dtohG",
-    "desc": "pkh([bb1ccf6a]0h/0h/0h/0/*)",
+    "address": "1EphSaGaZXXZDoC42MXsowiQCRaaWkWnP5",
+    "desc": "pkh([979ef19b]0h/0h/0h/0/*)",
     "sats": 32500,
     "online": true,
     "note": "live, spendable now, kept small"
   },
   "spot": {
     "label": "spot-aggregation",
-    "address": "1M8HxHfeZLg19h68DHV7CpHueGwoeoLE55",
-    "desc": "pkh([dcc39449]0h/0h/1h/0/*)",
+    "address": "15LCptKKsunCor85Z9FKj1tBdKs1JMWB75",
+    "desc": "pkh([2f824725]0h/0h/1h/0/*)",
     "sats": 0,
     "online": true,
     "note": "watch-only consolidation pool"
   },
   "cold": {
     "label": "cold-vault",
-    "address": "12pHPuUXzWPZ9fu5WDaa9CFxZmrg1rxifB",
-    "desc": "pkh([13e95c9c]0h/0h/2h/0/*)",
+    "address": "19qQcAfv1noPghA7R8o983LrNMNHufoFx8",
+    "desc": "pkh([60e8ad91]0h/0h/2h/0/*)",
     "sats": 26457783,
     "online": false,
     "note": "air-gapped, two-key release only"
   },
-  "fingerprint": "13e95c9c",
+  "fingerprint": "60e8ad91",
   "cold_key_source": "vault/cold.key",
   "released_usd": 0.0
 }
