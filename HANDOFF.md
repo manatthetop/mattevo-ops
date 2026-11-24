@@ -78,3 +78,35 @@ force; paste the error.
 
 Report honestly. No faked balances, no committed features whose diff doesn't contain
 them. When in doubt, paste the command output.
+
+## Addendum, same evening (Chromebook session)
+
+- **Ledger/key incident, resolved:** a stash-pop conflict briefly left
+  `ledgers/vault.json` on an EPHEMERAL key (fp `13e95c9c`), and this box's
+  `vault/cold.key` was itself an ephemeral one (the sandbox's cold.key died with
+  it; each machine self-regenerates). Fixed: `cold.key` here is the backed-up
+  seed from `~/mattevo-cold-seed.txt`, ledger realigned to `60e8ad91 /
+  19qQcAf...` (commits `4a12836`, `dee3d8a`). Rule: any machine that runs the
+  desk must first load the backed-up seed into `vault/cold.key`, and check
+  `cold_key_source` before trusting any address.
+- **Standalone key proof (no repo code):** re-derived all three tiers from the
+  seed file with hand-written secp256k1 + RIPEMD-160 + Base58. All three match.
+  Two earlier mismatches were transcription typos in my scratch constants.
+- **Headless drive fixed and pushed (`4280195`):** ticker never starts on
+  non-tty stdin and mutes while `input()` reads. The REAL 15s cost was
+  `live.mempool_signatures()` doing 60 sequential HTTPS GETs at ~1s each on
+  this 2-core box; now a bounded thread pool with one retry. Piped desk exits 0
+  in ~7-11s.
+- **Phase 1 DONE:** tor client runs as the user with its own config at
+  `~/.mattevo-tor/torrc` (SocksPort 9050, ControlPort 9051, cookie auth;
+  `/etc/tor/torrc` untouched). stem 1.8.2 + pysocks installed; install with
+  `--break-system-packages` and run WITHOUT `python3 -I` (isolated mode hides
+  user-site). Proven: HTTPS 200 + real DDG .onion body over SOCKS, and NEWNYM
+  rotates the exit (185.220.101.27 -> 171.25.193.131). Caveats: .onion HTTP
+  often 301s to https, so onion fetches must follow redirects AND speak
+  TLS-over-SOCKS (skip cert check for .onion); several known onion addresses in
+  older notes are dead - verify before use.
+- **Sandbox: do NOT re-apply its own ticker patch** - `4280195` supersedes it.
+  Its signing patch (der_sig/script_sig_p2pkh/sighash_all/broadcast/chain-gated
+  deposit) is NOT in main yet; rebase it on this tip and finish intercept()/
+  confirm() per its own plan items 1-3.
