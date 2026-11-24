@@ -519,17 +519,9 @@ class TerminalDesk:
         self._setup_readline()
         if readline is not None:
             readline.set_completer(self._complete)
-        # The ticker repaints the prompt line every 0.5 s via _restore_cursor,
-        # which is exactly what garbles 'MATTevo>' under typed input and keeps
-        # the process alive after EOF on piped stdin. In a real terminal it also
-        # has to stop before input() ever reads: without that window, a piped
-        # 'quit' line gets overwritten by the prompt redraw and the desk hangs
-        # until timeout (exit 124). So: never start it on non-tty stdin, and
-        # stop it for the duration of every input() read.
-        self.tty = sys.stdin.isatty()
-        self.mute = threading.Event()     # set while input() owns the prompt line
-        if self.tty:
-            self.thread.start()
+        # self.tty and self.mute are set in __init__, and the not-tty early return
+        # above already handled piped stdin, so this line only runs in a real terminal.
+        self.thread.start()
         self.engine.log("[DESK] online. new NAME onion to queue, go NAME to run it all, help for the rest.", "blue")
         self._prompt()
         try:
