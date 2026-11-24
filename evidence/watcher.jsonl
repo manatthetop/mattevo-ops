@@ -12,3 +12,27 @@
 {"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-24T18:48:04Z"}
 {"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-24T18:50:22Z"}
 {"event": "circuit", "circuit": "nymc479401599", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977403, "ts_utc": "2026-11-24T18:50:27Z"}
+{"event": "pass", "circuit": "nymc479401599", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T19:02:28Z"}
+{"event": "address-watch", "circuit": "nymc479401599", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T19:02:31Z"}
+{"event": "circuit", "circuit": "nym40e7b9790c", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977403, "ts_utc": "2026-11-24T19:03:39Z"}
+{"event": "pass", "circuit": "nym40e7b9790c", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T19:17:57Z"}
+{"event": "address-watch", "circuit": "nym40e7b9790c", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T19:18:00Z"}
+{"event": "circuit", "circuit": "nym0f0b532142", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977403, "ts_utc": "2026-11-24T19:19:06Z"}
+{"event": "pass", "circuit": "nym0f0b532142", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T19:29:05Z"}
+{"event": "address-watch", "circuit": "nym0f0b532142", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T19:29:07Z"}
+{"event": "circuit", "circuit": "nym8a77507752", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977405, "ts_utc": "2026-11-24T19:30:13Z"}
+{"event": "pass", "circuit": "nym8a77507752", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T19:41:46Z"}
+{"event": "address-watch", "circuit": "nym8a77507752", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T19:41:49Z"}
+{"event": "circuit", "circuit": "nym46bd91eae2", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977405, "ts_utc": "2026-11-24T19:42:53Z"}
+{"event": "pass", "circuit": "nym46bd91eae2", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T19:52:12Z"}
+{"event": "address-watch", "circuit": "nym46bd91eae2", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T19:52:14Z"}
+{"event": "circuit", "circuit": "nym79474063d9", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977406, "ts_utc": "2026-11-24T19:53:18Z"}
+{"event": "pass", "circuit": "nym79474063d9", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T20:01:41Z"}
+{"event": "address-watch", "circuit": "nym79474063d9", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T20:01:43Z"}
+{"event": "circuit", "circuit": "nym1c7a497598", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977407, "ts_utc": "2026-11-24T20:02:49Z"}
+{"event": "pass", "circuit": "nym1c7a497598", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T20:19:54Z"}
+{"event": "address-watch", "circuit": "nym1c7a497598", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T20:19:58Z"}
+{"event": "circuit", "circuit": "nym40148a3a77", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977411, "ts_utc": "2026-11-24T20:21:04Z"}
+{"event": "pass", "circuit": "nym40148a3a77", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T20:32:02Z"}
+{"event": "address-watch", "circuit": "nym40148a3a77", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T20:32:04Z"}
+{"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-24T22:00:11Z"}
