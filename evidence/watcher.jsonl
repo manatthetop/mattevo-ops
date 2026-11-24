@@ -10,3 +10,5 @@
 {"event": "pass", "circuit": "nymf66d2d075b", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T18:47:34Z"}
 {"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-24T18:47:45Z"}
 {"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-24T18:48:04Z"}
+{"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-24T18:50:22Z"}
+{"event": "circuit", "circuit": "nymc479401599", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977403, "ts_utc": "2026-11-24T18:50:27Z"}
