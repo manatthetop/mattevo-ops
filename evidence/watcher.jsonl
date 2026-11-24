@@ -1,0 +1,5 @@
+{"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "ts_utc": "2026-11-24T18:30:03Z"}
+{"event": "circuit", "circuit": "default", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977402, "ts_utc": "2026-11-24T18:30:13Z"}
+{"event": "pass", "circuit": "default", "sampled": 120, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T18:31:28Z"}
+{"event": "circuit", "circuit": "nymf7b00399ea", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977402, "ts_utc": "2026-11-24T18:32:49Z"}
+{"event": "pass", "circuit": "nymf7b00399ea", "sampled": 400, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T18:35:59Z"}

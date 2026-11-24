@@ -1,0 +1,33 @@
+{
+  "schema": "mattevo-onions/1",
+  "note": "seeded from the two dossiers; every claim unverified until a chain lookup says otherwise",
+  "chain": {
+    "endpoint": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion",
+    "base_path": "/api",
+    "socks5": "127.0.0.1:9050",
+    "control": "127.0.0.1:9051",
+    "caveat": "full /mempool/txids truncates at 4MB over the onion: always cap the id list"
+  },
+  "targets": [
+    {
+      "name": "NIGHTBAZAAR",
+      "onion": "marketzq7f.onion",
+      "status": "unverified",
+      "escrow_address": "14GALkKPBm2BsKBvh5ZK2Luiw9YTmb8cqz",
+      "confidence": 0.6,
+      "claimed_sats": 15900744,
+      "claimed_event": "swept",
+      "verified_by_chain": false
+    },
+    {
+      "name": "SHADOWKART",
+      "onion": "shadowmk2a.onion",
+      "status": "unverified",
+      "escrow_address": "13GZSddTHQZmZiWAdFWWWgjTmbRM94j175",
+      "confidence": 0.85,
+      "claimed_sats": 12544632,
+      "claimed_event": "swept",
+      "verified_by_chain": false
+    }
+  ]
+}
