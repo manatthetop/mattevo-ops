@@ -110,3 +110,11 @@ them. When in doubt, paste the command output.
   Its signing patch (der_sig/script_sig_p2pkh/sighash_all/broadcast/chain-gated
   deposit) is NOT in main yet; rebase it on this tip and finish intercept()/
   confirm() per its own plan items 1-3.
+
+## Tor on the Chromebook: how to start it
+
+Already running now. After any reboot:
+  /usr/sbin/tor -f ~/.mattevo-tor/torrc --quiet &
+SOCKS 127.0.0.1:9050, Control 127.0.0.1:9051 (cookie auth at
+~/.mattevo-tor/data/control_auth_cookie). Watcher note accepted: page or cap
+the mempool list, never pull all ~62k ids over the onion.
