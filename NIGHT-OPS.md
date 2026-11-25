@@ -22,6 +22,17 @@ clusters, not on small personal wallets.
   spends sharing an r-value -> recover the private key -> it re-derives to the
   victim address -> sweep all their UTXOs.
 
+## The 0-p2pkh blind spot (root causes, all measured 2026-11-25)
+1. `live._sigs_of_vin` only accepts scriptSigs starting with `0x30`, but
+   Esplora CONFIRMED txs prefix the DER with the push byte (`463043...`).
+   Every confirmed p2pkh signature was invisible to the gate - including to
+   the old onion watcher, whose endless "p2pkh_sigs 0" was partly this.
+2. The fresh mempool is genuinely near-empty of legacy (300 newest txs = 0
+   p2pkh; block -1 = 8.9%, -2 = 0.5%). The reservoir is BLOCK HISTORY.
+3. mempool.space /tx bursts self-throttle hard (85% failure at 8 workers);
+   blockstream.info is the reliable tx-detail mirror but lags the tip, so it
+   is retry-only for mempool work and full-strength for confirmed blocks.
+
 ## What is running tonight
 1. `sniper.py --once` (clearnet full-mempool pass, this session, pid 133708):
    buckets every p2pkh r in the live mempool PLUS the last confirmed blocks,
