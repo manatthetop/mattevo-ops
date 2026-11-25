@@ -25,5 +25,12 @@
   },
   "fingerprint": "60e8ad91",
   "cold_key_source": "vault/cold.key",
-  "released_usd": 0.0
+  "released_usd": 0.0,
+  "chain_verified": {
+    "verified_utc": "2026-11-25T06:24:47Z",
+    "verified_by": "sniper night audit 2026-11-25",
+    "method": "GET /address/{addr} and /address/{addr}/txs for every tier address",
+    "observed": "0 transactions, 0 sats on-chain for hot, spot and cold",
+    "meaning": "the sats fields are bookkeeping fiction until a chain-confirmed capture; do not withdraw them"
+  }
 }

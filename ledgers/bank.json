@@ -20,10 +20,13 @@
       "gross_usd": 15985.53,
       "fee_usd": 55.95,
       "net_usd": 15929.58,
-      "state": "paid",
+      "state": "unverified",
       "eta_hours": 24,
       "opened": "2026-11-24T04:53:51Z",
-      "settled": "2026-11-24T04:53:51Z"
+      "settled": "2026-11-24T04:53:51Z",
+      "chain_verified": false,
+      "state_before_relabel": "paid",
+      "relabel_note": "cashed against the phantom cold balance: that address has 0 on-chain txs (audit 2026-11-25T06:24:47Z)"
     }
   ]
 }

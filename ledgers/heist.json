@@ -23,7 +23,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "23d03a1dcc4a27e665231e40cf121f13f86797293d874d0011e33f746004336d",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "BRIDGE-LP",
@@ -49,7 +51,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "4f6bd6cf747fd90cfab28d9651b15342def0ff978918149556ab6d706c08233f",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "MIXER-CHANGE",
@@ -75,7 +79,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "6c5a653631ef4885c274abc6d8c0109dd0f218de0a32e072a89a28e065fbb697",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "BRIDGE-LP",
@@ -101,7 +107,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "9011025a3f8b26e51c7375bf6c3487a07e1f63e7a127c4e9dd6c85d115b39104",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "MIXER-CHANGE",
@@ -127,7 +135,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "0fe900c5e820fa43e63942b5f92be3b04b92c7683fd15cae79e6be2030f03056",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "BRIDGE-LP",
@@ -153,7 +163,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "d9fe21d355a4c622ecb92af642e53ef853f0cd58c9737f08436b07be5b120d1b",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "HOSTING-GATEWAY",
@@ -179,7 +191,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "98b2cb133010270ff4a70028480451cf8812c752cf96bff2b3b45b5984bc84a9",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "BRIDGE-LP",
@@ -205,7 +219,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "87bcf995b26c223db4fbe3a3d9dae4a9c282fdc54e479023b832d4a031f49fe9",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "MIXER-CHANGE",
@@ -231,7 +247,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "5b5b27d690e1f0726372aa8dcaa1599cec80f83079bb49d068efb3e5fec0fbc4",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "BRIDGE-LP",
@@ -257,7 +275,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "3e05654f1ccef2e4597ecff2684524f63540ba2032535ffb38a592b0fbd634e4",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "HOSTING-GATEWAY",
@@ -283,7 +303,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "12a6c5be65a7f9e1c9874099c6fcf6795560ea3cae52fbcebda14ebe2248646f",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "HOSTING-GATEWAY",
@@ -309,7 +331,9 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "f4499be081ebf4e0430c82521f572609b9f52795ba8f76c8bb7c0786691ff13c",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   },
   {
     "relay": "ESCROW-HOT",
@@ -335,6 +359,8 @@
     "effective_fee": 4500,
     "race": "won",
     "conflicts_with": "d74b84775da5b3a0759ded36d2447ee9535b72c5d1011dabf68d75eb2ae55197",
-    "stored_in": "cold"
+    "stored_in": "cold",
+    "chain_verified": false,
+    "relabel_note": "pre-chain-gate format; txid not found on-chain (audit 2026-11-25T06:24:53Z)"
   }
 ]
