@@ -234,6 +234,8 @@ def pass_once(depth=6, floor=5_000_000, sample=None, workers=16,
         return None
     if sample and len(ids) > sample:        # sampling stride, not a head slice:
         ids = ids[::max(1, len(ids) // sample)][:sample]   # head = newest only
+    logline({"event": "sniper-pass", "phase": "mempool-fetch",
+             "n": len(ids)})                # stage heartbeat (see wait_mempool)
     mem = {}
     n_tx = n_p2pkh = 0
 
