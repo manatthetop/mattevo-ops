@@ -36,3 +36,8 @@
 {"event": "pass", "circuit": "nym40148a3a77", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T20:32:02Z"}
 {"event": "address-watch", "circuit": "nym40148a3a77", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T20:32:04Z"}
 {"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-24T22:00:11Z"}
+{"event": "circuit", "circuit": "nyme5ba4bb1a5", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977420, "ts_utc": "2026-11-24T22:00:23Z"}
+{"event": "pass", "circuit": "nyme5ba4bb1a5", "sampled": 1500, "p2pkh_sigs": 0, "reuse_buckets": 0, "ts_utc": "2026-11-24T22:07:54Z"}
+{"event": "address-watch", "circuit": "nyme5ba4bb1a5", "targets": 2, "fresh_txs": 0, "sigs_banked": 0, "ts_utc": "2026-11-24T22:07:55Z"}
+{"event": "circuit", "circuit": "nym1e799acee4", "onion": "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", "tip": 977421, "ts_utc": "2026-11-24T22:09:00Z"}
+{"event": "selftest", "circuit": "offline", "recovery_ok": true, "gate_ok": true, "sweep_signed": true, "verify_input_ok": true, "ts_utc": "2026-11-25T02:15:24Z"}
