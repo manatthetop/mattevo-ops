@@ -116,17 +116,30 @@ def wait_mempool(max_wait=330):
 
 
 def _sigs_p2pkh(v):
-    """(r, s) for one CONFIRMED p2pkh input. live._sigs_of_vin requires the
-    scriptSig to START with 0x30, but Esplora's confirmed txs prefix it with
-    the DER push byte (46 = 70 bytes), so every legacy sig fails that check.
-    Mem-pool raw hex has no push byte, hence mem-side extraction works as-is."""
+    """(r, s) for one p2pkh input, mempool OR confirmed. A scriptSig is
+    <push><DER>: the push byte is the DER length (0x46 = 70-byte sig, 0x47 =
+    71-byte, ...). live._sigs_of_vin only accepts a raw '30' start (mempool
+    hex), and my first confirmed fix hardcoded '46' and missed the 71-byte
+    sigs - which is most of them (measured 2026-11-25: a real confirmed
+    spend starts '47304402' and stayed invisible). Accept any push length;
+    _der_rs rejects a non-DER tail by structure, not by guessed length."""
     rs = live._sigs_of_vin(v)
     if rs:
         return rs
     ss = v.get("scriptsig") or ""
-    if len(ss) > 4 and ss[:2] == "46" and ss[2:4] == "30":
-        rs = live._der_rs(ss[2:])
-        return [rs] if rs else []
+    if len(ss) > 4:
+        try:
+            push = int(ss[:2], 16)
+        except ValueError:
+            return []
+        if 0x40 < push <= len(ss) // 2 and ss[2:4] == "30":
+            out = []
+            for der in (ss[2:2 + push * 2], ss[2:]):   # tolerate push miscount
+                rs = live._der_rs(der)
+                if rs:
+                    out.append(rs)
+                    break
+            return out
     return []
 
 
