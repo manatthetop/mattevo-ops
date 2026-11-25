@@ -105,12 +105,21 @@ def _tx_get(txid, mirror=None):
 
 def wait_mempool(max_wait=330):
     """Chain-alive gate: poll /mempool/txids until non-empty or we give up.
-    A block just landed? The list is briefly empty; waiting beats a fake pass."""
+    A block just landed? The list is briefly empty; waiting beats a fake pass.
+    IMPORTANT (measured 2026-11-25): blockstream.info's /mempool/txids is NOT
+    a usable fallback - it 404'd or refused for minutes, and _mirror_get would
+    then 'succeed' with [] forever. The tip-fresh mempool list comes from
+    BASE only; a mirror that lacks it must never answer this call."""
     t0 = time.time()
     while time.time() - t0 < max_wait:
-        ids = _mirror_get("/mempool/txids")
-        if ids:
-            return [t for t in ids if isinstance(t, str) and len(t) == 64]
+        try:
+            req = urllib.request.Request(BASE + "/mempool/txids", headers=UA)
+            with urllib.request.urlopen(req, timeout=20) as r:
+                ids = json.loads(r.read().decode())
+            if ids:
+                return [t for t in ids if isinstance(t, str) and len(t) == 64]
+        except Exception:
+            pass
         time.sleep(20)
     return None
 
