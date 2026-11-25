@@ -172,27 +172,40 @@ def confirmed_bank(depth, full=True, workers=16):
     bank = {}
     got = 0
     for h in range(tip, tip - depth, -1):
-        blocks = _mirror_get(f"/blocks/{h}")
+        # meta calls on BLOCK too: cross-mirror block-height lag made
+        # /blocks/{tip-1} 404 on blockstream while mempool.space had it,
+        # which silently zeroed whole blocks of the bank (measured 2026-11-25).
+        blocks = _mirror_get(f"/blocks/{h}") or _mirror_get(f"/blocks/{h - 2}")
         if not blocks:
             continue
         bid = blocks[0]["id"] if isinstance(blocks, list) else blocks.get("id")
         txids = _mirror_get(f"/block/{bid}/txids") or []
+        if not txids:
+            continue
         if not full and len(txids) > 300:
             txids = txids[::max(1, len(txids) // 220)]
+        logline({"event": "sniper-bank", "height": h, "block": bid[:16],
+                 "txids": len(txids)})     # per-block progress: bank can never
+                                           # be silently empty again
 
         def one(t):
             d = _tx_get(t, mirror=BLOCK)     # confirmed history: mirror is safe
             return d if (d and _gate_only(d)) else None
+        n_blk = 0
         with ThreadPoolExecutor(4) as ex:
             for doc in ex.map(one, txids):
                 if doc:
-                    got += sigs_in(doc, doc.get("txid", ""), bank)
+                    n_blk += sigs_in(doc, doc.get("txid", ""), bank)
+        got += n_blk
+        logline({"event": "sniper-bank", "height": h, "p2pkh_sigs": n_blk})
     return bank, got
 
 
 def pass_once(depth=6, floor=5_000_000, sample=None, workers=16,
               mirror2=None):
     t0 = time.time()
+    logline({"event": "sniper-pass", "phase": "start", "depth": depth,
+             "sample": sample})            # heartbeat: proves the loop is alive
     ids = wait_mempool()
     if ids is None:
         logline({"event": "sniper-pass", "skipped": "mempool empty / chain offline"})
