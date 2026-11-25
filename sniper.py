@@ -67,8 +67,14 @@ EVID_DIR = ROOT / "evidence"
 STATE = EVID_DIR / "sniper_state.json"
 SPOT = "https://mempool.space/api/v1/prices"
 BASE = "https://mempool.space/api"          # meta calls (mempool ids, blocks);
-BLOCK = "https://blockstream.info/api"      # tx-detail burst mirror (measured:
-MIRRORS = [BASE, BLOCK]                     # mempool.space self-throttles bursts
+BLOCK = "https://blockstream.info/api"      # tx-detail mirror, BUT measured
+                                            # 2026-11-25: /tx bursts there get
+                                            # TCP-forced closed (all 4 lanes
+                                            # stuck SYN-SENT for minutes), so
+                                            # the primary detail source is
+                                            # mempool.space, blockstream retry-
+                                            # only.
+MIRRORS = [BASE, BLOCK]                     # (block meta falls back across both)
 UA = {"User-Agent": "mattevo-sniper/1.0", "Accept": "application/json"}
 
 
@@ -96,10 +102,13 @@ def _tx_get(txid, mirror=None):
         for attempt in range(3):
             try:
                 req = urllib.request.Request(b + "/tx/" + txid, headers=UA)
-                with urllib.request.urlopen(req, timeout=20) as r:
+                with urllib.request.urlopen(req, timeout=10) as r:
                     return json.loads(r.read().decode())
             except Exception:
-                time.sleep(1.0 + attempt)  # backoff beats a hammering burst
+                # A socket stuck in SYN-SENT (host gone quiet) costs the full
+                # timeout; two stuck lanes per tx would stall a block for
+                # minutes. Fail fast, then back off briefly and retry.
+                time.sleep(0.5 * (attempt + 1))
     return None
 
 
@@ -211,7 +220,10 @@ def confirmed_bank(depth, full=True, workers=16):
                                            # be silently empty again
 
         def one(t):
-            d = _tx_get(t, mirror=BLOCK)     # confirmed history: mirror is safe
+            # BASE-primary: blockstream /tx bursts TCP-stall (see BLOCK note);
+            # _tx_get keeps it as the retry mirror, which is safe for
+            # confirmed history.
+            d = _tx_get(t)
             return d if (d and _gate_only(d)) else None
         n_blk = 0
         with ThreadPoolExecutor(4) as ex:
